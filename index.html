@@ -2183,14 +2183,23 @@ function update() {
       if (e.cfCooldown<=0 && placedGuns.length>0) {
         e.cfCooldown=e.cfRate;
         // Fire at nearest gun
-        let bestGun=null, bestD=Infinity;
+        // Spread fire across all guns — weight by inverse distance so nearest is more likely
+        // but not guaranteed. Guns with no emplacement are slightly softer targets.
+        const candidates = [];
         for (const g of placedGuns) {
-          const d=Math.hypot((g.fx-e.fx)*mapNatW,(g.fy-e.fy)*mapNatH);
-          if (d<bestD) { bestGun=g; bestD=d; }
+          const d = Math.hypot((g.fx-e.fx)*mapNatW,(g.fy-e.fy)*mapNatH);
+          if (g.camouflaged && g.digLevel > 0 && Math.random() < 0.70) continue;
+          // Weight: closer = higher, uncamouflaged = higher
+          const w = 1 / (d + 1);
+          candidates.push({ g, w });
         }
+        if (candidates.length === 0) continue;
+        // Weighted random pick
+        const totalW = candidates.reduce((s,c)=>s+c.w, 0);
+        let rnd = Math.random() * totalW;
+        let bestGun = candidates[0].g;
+        for (const c of candidates) { rnd -= c.w; if (rnd <= 0) { bestGun=c.g; break; } }
         if (bestGun) {
-          // Camouflaged emplacement: 70% chance enemy can't acquire target
-          if (bestGun.camouflaged && bestGun.digLevel > 0 && Math.random() < 0.70) continue;
           const ang=Math.atan2((bestGun.fy-e.fy)*mapNatH,(bestGun.fx-e.fx)*mapNatW);
           cfShots.push({
             fx:e.fx, fy:e.fy,
@@ -2208,14 +2217,15 @@ function update() {
       e.bossRocketTimer--;
       if (e.bossRocketTimer <= 0) {
         e.bossRocketTimer = def.bossRocketRate;
-        // 25% chance to miss entirely (foliage, smoke, evasion)
-        if (Math.random() < 0.25) { addFx(e.fx,e.fy,'rgba(80,60,20,1)',6); continue; }
+        // 35% flat miss — rockets that just go wide
+        if (Math.random() < 0.35) { addFx(e.fx,e.fy,'rgba(80,60,20,1)',6); continue; }
         const target = placedGuns[Math.floor(Math.random()*placedGuns.length)];
         const distNat = Math.hypot((target.fx-e.fx)*mapNatW, (target.fy-e.fy)*mapNatH);
         const diagNat = Math.hypot(mapNatW, mapNatH);
-        // Inaccuracy grows with distance — short range near-guaranteed hit,
-        // long range rocket can land up to ~8% of map diagonal away from target
-        const maxSpread = 0.06 * (distNat / diagNat);
+        // Minimum spread = 4% map diagonal regardless of range (TOS-1 is an area weapon)
+        // Additional spread grows with distance up to 10%
+        const minSpread = 0.04;
+        const maxSpread = minSpread + 0.10 * (distNat / diagNat);
         const spreadX = (Math.random()-0.5) * 2 * maxSpread;
         const spreadY = (Math.random()-0.5) * 2 * maxSpread;
         const aimFx = target.fx + spreadX;
@@ -2250,11 +2260,18 @@ function update() {
       const diagPx = Math.hypot(mapNatW,mapNatH);
       const rangeNat = def.retFireRange * diagPx;
 
-      // Find nearest gun in range
-      let nearestGun=null, nearestDist=Infinity;
+      // Pick target: weighted random among all guns in range (closer = more likely but not certain)
+      const rtCandidates = [];
       for (const g of placedGuns) {
-        const d=Math.hypot((g.fx-e.fx)*mapNatW,(g.fy-e.fy)*mapNatH);
-        if (d<rangeNat && d<nearestDist) { nearestGun=g; nearestDist=d; }
+        const d = Math.hypot((g.fx-e.fx)*mapNatW,(g.fy-e.fy)*mapNatH);
+        if (d < rangeNat) rtCandidates.push({ g, w: 1/(d+1) });
+      }
+      let nearestGun = null;
+      if (rtCandidates.length > 0) {
+        const totalW = rtCandidates.reduce((s,c)=>s+c.w, 0);
+        let rnd = Math.random() * totalW;
+        nearestGun = rtCandidates[0].g;
+        for (const c of rtCandidates) { rnd -= c.w; if (rnd <= 0) { nearestGun=c.g; break; } }
       }
 
       if (nearestGun) {

@@ -5,214 +5,579 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>FIREBASE</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap');
+
   * { margin:0;padding:0;box-sizing:border-box; }
-  html,body { width:100%;height:100%;overflow:hidden;background:#0a0a06;font-family:'Courier New',monospace; }
+  html,body {
+    width:100%;height:100%;overflow:hidden;
+    background:#0a0805;
+    font-family:'Courier New',monospace;
+  }
   #game-canvas { display:block;position:fixed;top:0;left:0;touch-action:none; }
+
+  /* ── SHARED METAL PANEL MIXIN ── */
+  /* Panels: warm dark brown bg, bronze border, subtle inner bevel */
+  .metal-panel {
+    background:linear-gradient(180deg,#1a1510 0%,#110e0a 100%);
+    border:1px solid #4a3820;
+    box-shadow:inset 0 1px 0 rgba(200,160,80,.10), inset 0 -1px 0 rgba(0,0,0,.5);
+  }
+
+  /* ── SPLASH SCREEN ── */
+  #splash {
+    position:fixed;inset:0;z-index:100;
+    background:#000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:0;
+    transition:opacity .8s ease;
+  }
+  #splash.fade-out { opacity:0;pointer-events:none; }
+  #splash-logo {
+    width:min(82vw,360px);
+    filter:drop-shadow(0 0 32px rgba(200,120,20,.55));
+    animation:logoPulse 3s ease-in-out infinite;
+  }
+  @keyframes logoPulse {
+    0%,100% { filter:drop-shadow(0 0 28px rgba(200,120,20,.45)); }
+    50%      { filter:drop-shadow(0 0 48px rgba(220,140,30,.80)); }
+  }
+  #splash-tap {
+    margin-top:36px;
+    font-size:12px;letter-spacing:.32em;color:#c8a040;
+    text-transform:uppercase;font-weight:bold;
+    animation:tapBlink 1.4s ease-in-out infinite;
+  }
+  @keyframes tapBlink { 0%,100%{opacity:.45} 50%{opacity:1} }
+  #splash-version {
+    position:absolute;bottom:24px;
+    font-size:9px;color:#4a3820;letter-spacing:.14em;text-transform:uppercase;
+  }
 
   /* ── HUD ── */
   #hud {
     position:fixed;top:0;left:0;right:0;height:48px;
-    background:rgba(6,6,3,0.95);border-bottom:1px solid #3a3820;
-    display:flex;align-items:center;padding:0 10px;gap:12px;z-index:20;
+    background:linear-gradient(180deg,#1c1510 0%,#120f0a 100%);
+    border-bottom:2px solid #3a2810;
+    box-shadow:0 2px 8px rgba(0,0,0,.7), inset 0 1px 0 rgba(180,120,40,.12);
+    display:flex;align-items:center;padding:0 10px;gap:10px;z-index:20;
     pointer-events:none;
   }
   .hud-block { display:flex;flex-direction:column;gap:1px;min-width:42px; }
-  .hud-label { font-size:9px;color:#3a3a28;text-transform:uppercase;letter-spacing:.08em; }
-  .hud-val   { font-size:15px;font-weight:bold;color:#c8b870; }
-  .hud-sep   { width:1px;height:26px;background:#222214;flex-shrink:0; }
-  .hud-title { font-size:12px;font-weight:bold;color:#6a5a30;letter-spacing:.22em;flex:1;text-align:center; }
+  .hud-label { font-size:8px;color:#7a6040;text-transform:uppercase;letter-spacing:.1em; }
+  .hud-val   { font-size:15px;font-weight:bold;color:#d4ac48;
+               text-shadow:0 0 8px rgba(200,160,40,.35); }
+  .hud-sep   { width:1px;height:26px;background:#2a1e10;flex-shrink:0; }
+  .hud-title {
+    font-size:13px;font-weight:bold;color:#9a7840;letter-spacing:.28em;
+    flex:1;text-align:center;text-transform:uppercase;
+    text-shadow:0 0 12px rgba(160,100,20,.3);
+  }
 
-  /* ── CONTROLS ── */
-  #controls {
-    position:fixed;top:56px;right:8px;z-index:20;
-    display:flex;flex-direction:column;gap:4px;
+  /* Rivet dots on HUD corners */
+  #hud::before, #hud::after {
+    content:'';position:absolute;
+    width:8px;height:8px;border-radius:50%;top:50%;transform:translateY(-50%);
+    background:radial-gradient(circle at 35% 35%,#8a7040,#3a2810);
+    box-shadow:0 1px 2px rgba(0,0,0,.6);
   }
-  .ctrl-btn {
-    background:rgba(8,10,4,.92);border:1px solid #2a2c14;
-    color:#4a5a28;font-size:9px;font-family:'Courier New',monospace;
-    letter-spacing:.1em;padding:5px 9px;cursor:pointer;
-    text-transform:uppercase;white-space:nowrap;
+  #hud::before { left:4px; }
+  #hud::after  { right:4px; }
+
+  /* ── HAMBURGER + MENU ── */
+  #btn-hamburger {
+    position:fixed;top:58px;right:8px;z-index:25;
+    width:38px;height:38px;
+    background:linear-gradient(180deg,#1e1810,#140f0a);
+    border:1px solid #4a3418;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+    box-shadow:0 2px 6px rgba(0,0,0,.5);
+  }
+  .ham-line {
+    width:18px;height:2px;
+    background:#8a6a30;
+    transition:background .15s;
+    pointer-events:none;
+  }
+  #btn-hamburger:active .ham-line { background:#c8a840; }
+  #btn-hamburger.open .ham-line   { background:#c8a840; }
+
+  #side-menu {
+    position:fixed;top:0;right:-180px;bottom:0;z-index:24;
+    width:170px;
+    background:linear-gradient(180deg,#1e1a12 0%,#120f0a 100%);
+    border-left:2px solid #4a3418;
+    box-shadow:-4px 0 16px rgba(0,0,0,.7);
+    display:flex;flex-direction:column;
+    padding:58px 0 20px;
+    transition:right .22s ease;
+  }
+  #side-menu.open { right:0; }
+  #side-menu-title {
+    font-size:8px;color:#4a3418;letter-spacing:.18em;text-transform:uppercase;
+    padding:0 14px 8px;border-bottom:1px solid #2a1e10;margin-bottom:4px;
+  }
+  .menu-btn {
+    display:flex;align-items:center;gap:10px;
+    padding:11px 14px;
+    background:none;border:none;border-bottom:1px solid #1a1208;
+    color:#8a6a30;font-size:9px;font-family:'Courier New',monospace;
+    letter-spacing:.1em;text-transform:uppercase;
+    cursor:pointer;text-align:left;width:100%;
     -webkit-tap-highlight-color:transparent;
+    transition:color .12s,background .12s;
   }
-  .ctrl-btn.active { color:#9ab840;border-color:#4a6020; }
+  .menu-btn:active { background:rgba(180,130,40,.06);color:#c8a840; }
+  .menu-btn.active { color:#d4a830; }
+  .menu-btn .menu-icon { font-size:13px;flex-shrink:0;width:18px;text-align:center; }
+  #menu-overlay {
+    position:fixed;inset:0;z-index:23;display:none;
+  }
+  #menu-overlay.open { display:block; }
+  /* Sound toggle pill */
+  .menu-toggle {
+    margin-left:auto;
+    width:32px;height:16px;border-radius:8px;
+    background:#2a1e10;border:1px solid #3a2810;
+    position:relative;transition:background .2s;flex-shrink:0;
+  }
+  .menu-toggle::after {
+    content:'';position:absolute;top:2px;left:2px;
+    width:10px;height:10px;border-radius:50%;
+    background:#4a3418;transition:left .2s,background .2s;
+  }
+  .menu-toggle.on { background:#5a3e10;border-color:#8a6020; }
+  .menu-toggle.on::after { left:18px;background:#c8a840; }
 
   /* ── START BUTTON ── */
   #btn-start {
     position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-    z-index:20;background:rgba(10,16,5,.97);border:1px solid #4a6020;
-    color:#9ab840;font-family:'Courier New',monospace;font-size:12px;
-    font-weight:bold;letter-spacing:.16em;text-transform:uppercase;
-    padding:11px 28px;cursor:pointer;white-space:nowrap;
+    z-index:20;
+    background:linear-gradient(180deg,#2a1e0a 0%,#1a1206 100%);
+    border:2px solid #7a5a20;
+    color:#d4a830;font-family:'Courier New',monospace;font-size:12px;
+    font-weight:bold;letter-spacing:.18em;text-transform:uppercase;
+    padding:12px 32px;cursor:pointer;white-space:nowrap;
+    box-shadow:0 0 16px rgba(180,130,20,.25), inset 0 1px 0 rgba(220,170,60,.15);
     -webkit-tap-highlight-color:transparent;
   }
+  #btn-start:active { background:#150f04; }
   #btn-start.hidden { display:none; }
 
-  /* ── WAVE INCOMING BANNER ── */
+  /* ── WAVE BANNER ── */
   #wave-banner {
     position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
     z-index:30;pointer-events:none;
-    display:flex;flex-direction:column;align-items:center;gap:6px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
     opacity:0;transition:opacity .35s;
   }
   #wave-banner.show { opacity:1; }
-  #wave-num-line { font-size:28px;font-weight:bold;color:#c8b870;letter-spacing:.22em;text-transform:uppercase;text-shadow:0 0 18px rgba(200,184,112,.55); }
+  #wave-num-line {
+    font-size:30px;font-weight:bold;color:#d4a830;letter-spacing:.24em;
+    text-transform:uppercase;
+    text-shadow:0 0 24px rgba(210,160,30,.7), 0 2px 4px rgba(0,0,0,.8);
+  }
   #wave-intel {
-    font-size:10px;color:#7a7a48;letter-spacing:.12em;text-transform:uppercase;
-    background:rgba(6,6,3,.85);border:1px solid #2e2e18;padding:5px 14px;
-    max-width:280px;text-align:center;line-height:1.5;
+    font-size:10px;color:#7a6040;letter-spacing:.12em;text-transform:uppercase;
+    background:linear-gradient(180deg,#1a1510,#110e0a);
+    border:1px solid #3a2810;padding:6px 16px;
+    max-width:300px;text-align:center;line-height:1.5;
+    box-shadow:0 2px 8px rgba(0,0,0,.6);
   }
 
   /* ── GUN PICKER ── */
   #gun-picker {
     position:fixed;bottom:0;left:0;right:0;z-index:25;
-    background:rgba(6,7,3,.98);border-top:1px solid #3a3820;
-    padding:10px 8px 18px;display:none;flex-direction:column;gap:8px;
+    background:linear-gradient(180deg,#1c1510 0%,#120f0a 100%);
+    border-top:2px solid #4a3418;
+    padding:10px 8px 20px;display:none;flex-direction:column;gap:8px;
+    box-shadow:0 -4px 16px rgba(0,0,0,.7);
   }
   #gun-picker.open { display:flex; }
   #picker-header { display:flex;justify-content:space-between;align-items:center;padding:0 4px; }
-  #picker-title  { font-size:10px;color:#4a4a30;letter-spacing:.12em;text-transform:uppercase; }
+  #picker-title  { font-size:9px;color:#5a4828;letter-spacing:.14em;text-transform:uppercase; }
   #btn-cancel-picker {
-    font-size:10px;color:#3a2e18;cursor:pointer;letter-spacing:.1em;
-    text-transform:uppercase;padding:3px 10px;border:1px solid #221a0c;
-    background:none;font-family:'Courier New',monospace;
+    font-size:9px;color:#5a3820;cursor:pointer;letter-spacing:.1em;
+    text-transform:uppercase;padding:4px 12px;
+    border:1px solid #3a2010;background:none;font-family:'Courier New',monospace;
   }
   #picker-row { display:flex;gap:8px;justify-content:center;overflow-x:auto;padding:2px 4px; }
   .gun-option {
     display:flex;flex-direction:column;align-items:center;gap:4px;
-    background:rgba(12,16,6,.96);border:1px solid #1e2810;
-    border-radius:3px;padding:7px 8px;cursor:pointer;min-width:64px;
+    background:linear-gradient(180deg,#1e1810,#140f0a);
+    border:1px solid #3a2810;
+    padding:8px;cursor:pointer;min-width:68px;
+    box-shadow:inset 0 1px 0 rgba(180,130,40,.06);
     -webkit-tap-highlight-color:transparent;
   }
-  .gun-option:active { border-color:#6a9030; }
-  .gun-option.locked { opacity:.35;pointer-events:none; }
+  .gun-option:active { border-color:#8a6030;background:#160f08; }
+  .gun-option.locked { opacity:.30;pointer-events:none; }
   .gun-option img  { width:52px;height:38px;object-fit:contain; }
-  .gun-name { font-size:8px;color:#6a6a40;letter-spacing:.06em;text-align:center; }
-  .gun-cost { font-size:10px;color:#c8a830;font-weight:bold; }
+  .gun-name { font-size:8px;color:#6a5030;letter-spacing:.06em;text-align:center; }
+  .gun-cost { font-size:10px;color:#c8a030;font-weight:bold; }
 
-  /* ── CODEX / WAVE INTEL ── */
+  /* ── CODEX ── */
   #codex {
     position:fixed;top:56px;left:8px;z-index:20;
-    background:rgba(6,7,3,.95);border:1px solid #2a2c14;
-    padding:6px 10px;display:none;flex-direction:column;gap:4px;
-    max-width:220px;
+    background:linear-gradient(180deg,#1a1510,#110e0a);
+    border:1px solid #3a2810;
+    padding:7px 10px;display:none;flex-direction:column;gap:4px;
+    max-width:220px;box-shadow:2px 2px 8px rgba(0,0,0,.6);
   }
   #codex.open { display:flex; }
-  #codex-title { font-size:9px;color:#4a4a28;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid #1e1e10;padding-bottom:3px; }
-  .codex-row { font-size:9px;color:#8a8a50;display:flex;justify-content:space-between;gap:12px; }
-  .codex-unit { color:#a0a060; }
-  .codex-count { color:#c8b060;font-weight:bold; }
+  #codex-title {
+    font-size:9px;color:#5a4020;letter-spacing:.12em;text-transform:uppercase;
+    border-bottom:1px solid #2a1e10;padding-bottom:4px;
+  }
+  .codex-row { font-size:9px;color:#7a6030;display:flex;justify-content:space-between;gap:12px; }
+  .codex-unit { color:#9a7840; }
+  .codex-count { color:#c8a030;font-weight:bold; }
 
   /* ── END SCREEN ── */
   #end-screen {
-    position:fixed;inset:0;z-index:50;background:rgba(5,5,2,.94);
+    position:fixed;inset:0;z-index:50;
+    background:rgba(6,4,2,.96);
     display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
   }
-  #end-title { font-size:28px;font-weight:bold;letter-spacing:.2em;text-transform:uppercase; }
-  #end-sub   { font-size:11px;color:#4a4a32;letter-spacing:.12em; }
+  #end-title {
+    font-size:32px;font-weight:bold;letter-spacing:.22em;text-transform:uppercase;
+    text-shadow:0 0 24px rgba(200,40,20,.6);
+  }
+  #end-sub   { font-size:11px;color:#5a4020;letter-spacing:.12em;text-transform:uppercase; }
+  #end-best  { font-size:10px;color:#3a2810;letter-spacing:.12em; }
   #btn-restart {
-    background:#0c1406;border:1px solid #4a6020;color:#9ab840;
+    background:linear-gradient(180deg,#2a1e0a,#1a1206);
+    border:2px solid #7a5a20;color:#d4a830;
     font-family:'Courier New',monospace;font-size:12px;font-weight:bold;
-    letter-spacing:.16em;text-transform:uppercase;padding:10px 26px;cursor:pointer;
+    letter-spacing:.16em;text-transform:uppercase;padding:11px 28px;cursor:pointer;
+    box-shadow:0 0 12px rgba(180,130,20,.2);
   }
 
   #zoom-hint {
     position:fixed;bottom:76px;left:50%;transform:translateX(-50%);
-    z-index:15;font-size:9px;color:rgba(90,90,50,.55);
+    z-index:15;font-size:9px;color:rgba(100,70,30,.45);
     letter-spacing:.1em;text-transform:uppercase;pointer-events:none;
     transition:opacity 1s;white-space:nowrap;
   }
   #zoom-hint.gone { opacity:0; }
 
-  /* ── GROUP COMPLETE OVERLAY ── */
+  /* ── GROUP COMPLETE ── */
   #group-complete {
-    position:fixed;inset:0;z-index:60;background:rgba(4,6,2,.96);
+    position:fixed;inset:0;z-index:60;
+    background:rgba(6,4,2,.97);
     display:none;flex-direction:column;align-items:center;justify-content:center;
-    gap:16px;padding:20px;
+    gap:14px;padding:20px;
   }
-  #gc-title { font-size:28px;font-weight:bold;color:#c8b870;letter-spacing:.2em;text-transform:uppercase; text-shadow:0 0 20px rgba(200,184,112,.4); }
-  #gc-group { font-size:12px;color:#5a5a38;letter-spacing:.16em;text-transform:uppercase; }
-  #gc-supply{ font-size:14px;color:#c8a830;font-weight:bold;letter-spacing:.12em; }
+  #gc-title {
+    font-size:28px;font-weight:bold;color:#d4a830;letter-spacing:.22em;text-transform:uppercase;
+    text-shadow:0 0 24px rgba(210,160,30,.5);
+  }
+  #gc-group { font-size:11px;color:#5a4020;letter-spacing:.18em;text-transform:uppercase; }
+  #gc-supply{ font-size:13px;color:#c8a030;font-weight:bold;letter-spacing:.12em; }
   #gc-unlock { width:100%;max-width:320px;text-align:center; }
   .gc-unlock-badge {
-    border:1px solid #3a5020;background:rgba(10,18,6,.9);
+    border:1px solid #4a3418;
+    background:linear-gradient(180deg,#1e1810,#140f0a);
     padding:10px 16px;display:inline-flex;flex-direction:column;align-items:center;gap:6px;
   }
-  .gc-unlock-label { font-size:11px;color:#9ab840;letter-spacing:.12em;text-transform:uppercase;font-weight:bold; }
-  #gc-cards-title { font-size:10px;color:#4a4a28;letter-spacing:.14em;text-transform:uppercase; }
+  .gc-unlock-label { font-size:11px;color:#c8a030;letter-spacing:.12em;text-transform:uppercase;font-weight:bold; }
+  #gc-pick-label { font-size:10px;color:#4a3418;letter-spacing:.12em;text-transform:uppercase; }
   #gc-cards { display:flex;gap:10px;justify-content:center;flex-wrap:wrap;max-width:380px; }
   .upgrade-card {
     display:flex;flex-direction:column;align-items:center;gap:5px;
-    background:rgba(10,12,6,.95);border:1px solid #2a2a18;border-radius:4px;
+    background:linear-gradient(180deg,#1e1810,#140f0a);
+    border:1px solid #3a2810;
     padding:12px 10px;cursor:pointer;width:100px;
-    transition:border-color .15s,background .15s;
+    transition:border-color .15s;
     -webkit-tap-highlight-color:transparent;
+    box-shadow:inset 0 1px 0 rgba(180,130,40,.06);
   }
-  .upgrade-card:active { background:rgba(18,22,10,.95); }
+  .upgrade-card:active { background:#120d08; }
   .uc-icon { font-size:22px;line-height:1; }
-  .uc-name { font-size:9px;color:#9a9a60;letter-spacing:.1em;text-transform:uppercase;text-align:center;font-weight:bold; }
-  .uc-desc { font-size:8px;color:#5a5a38;letter-spacing:.06em;text-align:center;line-height:1.4; }
-  #gc-pick-label { font-size:10px;color:#3a5020;letter-spacing:.12em;text-transform:uppercase; }
+  .uc-name { font-size:9px;color:#9a7840;letter-spacing:.1em;text-transform:uppercase;text-align:center;font-weight:bold; }
+  .uc-desc { font-size:8px;color:#5a4020;letter-spacing:.06em;text-align:center;line-height:1.4; }
 
   /* ── FIRE MISSION ── */
   #fire-mission-hint {
     position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    z-index:35;font-size:13px;font-weight:bold;color:rgba(255,80,20,.85);
-    letter-spacing:.18em;text-transform:uppercase;pointer-events:none;
-    text-shadow:0 0 12px rgba(255,60,10,.5);display:none;
+    z-index:35;font-size:13px;font-weight:bold;color:rgba(255,80,20,.9);
+    letter-spacing:.2em;text-transform:uppercase;pointer-events:none;
+    text-shadow:0 0 16px rgba(255,60,10,.6);display:none;
   }
   #btn-fire-mission {
-    background:rgba(30,6,4,.92);border:1px solid #6a1808;color:#c04020;
-    font-size:9px;font-family:'Courier New',monospace;letter-spacing:.1em;
-    padding:5px 9px;cursor:pointer;text-transform:uppercase;white-space:nowrap;
+    width:100%;
+    background:linear-gradient(180deg,#2a0a06,#1a0604);
+    border:1px solid #6a1808;color:#c04020;
+    font-size:8px;font-family:'Courier New',monospace;letter-spacing:.08em;
+    padding:6px 4px;cursor:pointer;text-transform:uppercase;
+    text-align:center;box-sizing:border-box;
     -webkit-tap-highlight-color:transparent;
   }
-  #btn-fire-mission.active { color:#ff5030;border-color:#c03010;background:rgba(60,10,4,.95); }
+  #btn-fire-mission.active { color:#ff5030;border-color:#c03010; }
   body.fm-armed { cursor:crosshair; }
 
-  /* ── ROUTE EDITOR OVERLAY ── */
+  /* ── DIG IN ── */
+  #dig-row { display:flex;flex-direction:column;gap:4px;margin-top:4px; }
+  #dig-status {
+    display:flex;align-items:center;gap:8px;
+    font-size:9px;color:#5a4020;letter-spacing:.1em;text-transform:uppercase;
+  }
+  .dig-pip { width:14px;height:14px;border-radius:1px;flex-shrink:0; }
+  .dig-pip.empty   { background:#1a1208;border:1px solid #2a1e10; }
+  .dig-pip.scrape  { background:#6a5030;border:1px solid #8a6838; }
+  .dig-pip.sandbag { background:#8a7040;border:1px solid #a08848; }
+  .dig-pip.harden  { background:#5a5545;border:1px solid #7a7060; }
+  #dig-progress-wrap {
+    height:5px;background:#0e0c08;border:1px solid #2a1e10;border-radius:1px;overflow:hidden;
+  }
+  #dig-progress-bar { height:100%;background:#8a7040;transition:width .3s; }
+  #btn-dig {
+    width:100%;
+    background:linear-gradient(180deg,#221808,#160f04);
+    border:1px solid #5a4018;color:#c0902a;
+    font-family:'Courier New',monospace;font-size:11px;font-weight:bold;
+    letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;
+  }
+  #btn-dig:active { background:#130e04; }
+  #btn-dig.maxed  { opacity:.32;pointer-events:none; }
+  #btn-dig.digging{ color:#7a5a20;pointer-events:none; }
+
+  /* ── COORD TOAST ── */
   #coord-toast {
     position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
-    z-index:40;background:rgba(6,8,3,.95);border:1px solid #3a5020;
-    color:#9ab840;font-family:'Courier New',monospace;font-size:11px;
+    z-index:40;background:#1a1510;border:1px solid #4a3418;
+    color:#c8a030;font-family:'Courier New',monospace;font-size:11px;
     letter-spacing:.1em;padding:6px 14px;pointer-events:none;
     opacity:0;transition:opacity .3s;white-space:nowrap;
   }
   #coord-toast.show { opacity:1; }
 
+  /* ── PAUSE OVERLAY ── */
+  #pause-screen {
+    position:fixed;inset:0;z-index:45;background:rgba(4,3,2,.85);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    pointer-events:none;
+  }
+  #pause-screen.active { display:flex;pointer-events:auto; }
+  #pause-label {
+    font-size:36px;font-weight:bold;color:#c8a840;letter-spacing:.32em;
+    text-transform:uppercase;text-shadow:0 0 24px rgba(200,160,40,.45);
+  }
+  #pause-hint { font-size:10px;color:#3a2810;letter-spacing:.16em;text-transform:uppercase; }
+
+  /* ── SPEED BUTTON ── */
+  #btn-speed {
+    position:fixed;bottom:24px;right:10px;z-index:22;
+    background:linear-gradient(180deg,#1a1510,#100d08);
+    border:1px solid #3a2810;
+    color:#5a4828;font-size:10px;font-family:'Courier New',monospace;
+    letter-spacing:.1em;padding:7px 10px;cursor:pointer;
+    text-transform:uppercase;-webkit-tap-highlight-color:transparent;
+  }
+  #btn-speed.fast   { color:#c8a840;border-color:#6a4a18; }
+  #btn-speed.faster { color:#d47020;border-color:#8a4010; }
+
+  /* ── SUPPLY FLASH ── */
+  @keyframes supplyFlash {
+    0%   { color:#c8a840; }
+    40%  { color:#ffe090; }
+    100% { color:#c8a840; }
+  }
+  .supply-gain { animation:supplyFlash .4s ease-out; }
+
+  /* ── TUTORIAL ── */
+  #tutorial {
+    position:fixed;inset:0;z-index:70;
+    background:linear-gradient(180deg,#0e0a06 0%,#060402 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:20px;padding:28px 24px;
+  }
+  #tut-logo {
+    width:min(70vw,240px);
+    filter:drop-shadow(0 0 20px rgba(200,120,20,.5));
+    margin-bottom:4px;
+  }
+  #tutorial-steps { display:flex;flex-direction:column;gap:11px;max-width:320px;width:100%; }
+  .tut-step {
+    display:flex;gap:12px;align-items:flex-start;
+    font-size:11px;color:#6a5030;letter-spacing:.06em;line-height:1.6;
+    padding:8px 10px;
+    background:linear-gradient(180deg,#181208,#100d06);
+    border:1px solid #2a1e10;
+    border-left:2px solid #6a4818;
+  }
+  .tut-num {
+    font-size:13px;font-weight:bold;color:#c8a030;letter-spacing:.1em;
+    flex-shrink:0;width:20px;
+  }
+  #btn-tut-start {
+    background:linear-gradient(180deg,#2a1e0a,#1a1206);
+    border:2px solid #7a5820;color:#d4a830;
+    font-family:'Courier New',monospace;font-size:13px;font-weight:bold;
+    letter-spacing:.2em;text-transform:uppercase;padding:13px 36px;cursor:pointer;
+    box-shadow:0 0 16px rgba(180,130,20,.22);margin-top:4px;
+  }
+  #btn-tut-start:active { background:#160f04; }
+
+  /* ── LAST STAND ── */
+  @keyframes lastStandPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #last-stand-banner {
+    position:fixed;top:52px;left:0;right:0;z-index:18;
+    background:rgba(50,5,5,.92);border-bottom:1px solid #8a1010;
+    color:#ff4040;font-family:'Courier New',monospace;font-size:10px;
+    font-weight:bold;letter-spacing:.22em;text-transform:uppercase;
+    text-align:center;padding:4px;
+    animation:lastStandPulse 1s ease-in-out infinite;
+    display:none;
+  }
+  #last-stand-banner.active { display:block; }
+
   /* ── GUN INFO PANEL ── */
   #gun-info {
     position:fixed;bottom:0;left:0;right:0;z-index:25;
-    background:rgba(6,7,3,.98);border-top:1px solid #3a3820;
+    background:linear-gradient(180deg,#1c1510,#120f0a);
+    border-top:2px solid #4a3418;
     padding:12px 16px 20px;display:none;flex-direction:column;gap:10px;
+    box-shadow:0 -4px 16px rgba(0,0,0,.7);
   }
   #gun-info.open { display:flex; }
   #gun-info-header { display:flex;justify-content:space-between;align-items:center; }
-  #gun-info-name { font-size:14px;font-weight:bold;color:#c8b870;letter-spacing:.12em; }
+  #gun-info-name { font-size:14px;font-weight:bold;color:#c8a840;letter-spacing:.12em;
+                   text-shadow:0 0 8px rgba(200,160,40,.3); }
   #gun-info-close {
-    font-size:10px;color:#3a2e18;cursor:pointer;letter-spacing:.1em;
-    text-transform:uppercase;padding:3px 10px;border:1px solid #221a0c;
+    font-size:9px;color:#4a3018;cursor:pointer;letter-spacing:.1em;
+    text-transform:uppercase;padding:4px 12px;border:1px solid #2a1c0e;
     background:none;font-family:'Courier New',monospace;
   }
-  #gun-info-stats {
-    display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 12px;
-  }
+  #gun-info-stats { display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 12px; }
   .info-stat { display:flex;flex-direction:column;gap:2px; }
-  .info-stat-label { font-size:8px;color:#3a3a28;text-transform:uppercase;letter-spacing:.08em; }
-  .info-stat-val   { font-size:13px;font-weight:bold;color:#9ab840; }
+  .info-stat-label { font-size:8px;color:#7a6040;text-transform:uppercase;letter-spacing:.08em; }
+  .info-stat-val   { font-size:13px;font-weight:bold;color:#e0c060; }
   #gun-info-hp { display:flex;gap:4px;align-items:center; }
   .hp-pip { width:16px;height:8px;border-radius:1px; }
-  .hp-pip.full { background:#4a8020; }
-  .hp-pip.empty{ background:#3a1010; }
+  .hp-pip.full  { background:#7a5a10; box-shadow:0 0 4px rgba(180,130,20,.4); }
+  .hp-pip.empty { background:#2a1810; }
   #btn-displace {
-    background:rgba(40,12,6,.9);border:1px solid #7a2010;color:#c05030;
+    background:linear-gradient(180deg,#2a0e08,#1a0806);
+    border:1px solid #7a2010;color:#c05030;
     font-family:'Courier New',monospace;font-size:11px;font-weight:bold;
-    letter-spacing:.14em;text-transform:uppercase;padding:9px;cursor:pointer;
-    text-align:center;
+    letter-spacing:.14em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;
   }
-  #btn-displace:active { background:rgba(80,20,8,.9); }
+  #btn-displace:active { background:#180604; }
+
+  /* ── FIRE MODE TOGGLE ── */
+  #fire-mode-wrap {
+    display:none;flex-direction:column;gap:4px;margin-bottom:4px;
+  }
+  #fire-mode-wrap.visible { display:flex; }
+  #fire-mode-label {
+    font-size:8px;color:#4a3418;letter-spacing:.14em;text-transform:uppercase;
+  }
+  #fire-mode-btns { display:flex;gap:0; }
+  .fmode-btn {
+    flex:1;padding:9px 4px;text-align:center;font-size:9px;font-weight:bold;
+    font-family:'Courier New',monospace;letter-spacing:.1em;text-transform:uppercase;
+    border:1px solid #3a2810;background:linear-gradient(180deg,#1a1510,#110e0a);
+    color:#4a3418;cursor:pointer;-webkit-tap-highlight-color:transparent;
+    transition:all .15s;
+  }
+  .fmode-btn:first-child { border-right:none; }
+  .fmode-btn.active {
+    background:linear-gradient(180deg,#2e1e08,#1e1404);
+    color:#d4a830;border-color:#6a4a18;
+    text-shadow:0 0 8px rgba(210,160,30,.4);
+  }
+  .fmode-btn.indirect-active {
+    background:linear-gradient(180deg,#0a1820,#060e14);
+    color:#40a0c0;border-color:#1a5878;
+    text-shadow:0 0 8px rgba(60,160,200,.4);
+  }
+  #fdc-coverage-note {
+    font-size:8px;color:#4a3418;letter-spacing:.08em;text-align:center;
+  }
+
+  /* ── FDC / FO UNIT INFO PANEL ── */
+  #unit-info {
+    position:fixed;bottom:0;left:0;right:0;z-index:25;
+    background:linear-gradient(180deg,#1c1510,#120f0a);
+    border-top:2px solid #4a3418;
+    padding:12px 16px 20px;display:none;flex-direction:column;gap:8px;
+    box-shadow:0 -4px 16px rgba(0,0,0,.7);
+  }
+  #unit-info.open { display:flex; }
+  #unit-info-header { display:flex;justify-content:space-between;align-items:center; }
+  #unit-info-name { font-size:14px;font-weight:bold;color:#c8a840;letter-spacing:.12em; }
+  #unit-info-close {
+    font-size:9px;color:#4a3018;cursor:pointer;letter-spacing:.1em;
+    text-transform:uppercase;padding:4px 12px;border:1px solid #2a1c0e;
+    background:none;font-family:'Courier New',monospace;
+  }
+  #unit-info-body { display:flex;flex-direction:column;gap:6px; }
+  #unit-hp-row { display:flex;gap:4px;align-items:center; }
+  .unit-hp-label { font-size:8px;color:#3a2810;text-transform:uppercase;letter-spacing:.08em;margin-right:6px; }
+  #btn-conceal {
+    padding:9px;width:100%;text-align:center;
+    font-size:10px;font-weight:bold;font-family:'Courier New',monospace;
+    letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
+    background:linear-gradient(180deg,#0e180a,#080e06);
+    border:1px solid #2a4010;color:#6a9030;
+  }
+  #btn-conceal.active { background:linear-gradient(180deg,#0a1208,#060e04);color:#3a5820;border-color:#1a3008; }
+  #btn-conceal:active { filter:brightness(1.2); }
+  #btn-remove-unit {
+    padding:9px;width:100%;text-align:center;
+    font-size:10px;font-weight:bold;font-family:'Courier New',monospace;
+    letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
+    background:linear-gradient(180deg,#1a0806,#100504);
+    border:1px solid #4a1808;color:#8a3018;
+  }
+
+  /* ── PLACEMENT MODE ── */
+  body.placing-fdc { cursor:crosshair; }
+  body.placing-fo  { cursor:crosshair; }
+  .menu-btn.placing { color:#c8a840;background:rgba(200,160,40,.08); }
+
+  /* ── DEFILADE WARNING ── */
+  #defilade-warn {
+    font-size:8px;color:#c04020;letter-spacing:.1em;text-align:center;
+    text-transform:uppercase;display:none;
+  }
+  #defilade-warn.show { display:block; }
 </style>
 </head>
 <body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash">
+  <img id="splash-logo" src="assets/firebase_logo.PNG" alt="FIREBASE">
+  <div id="splash-tap">TAP TO BEGIN</div>
+  <div id="splash-version">FIREBASE · ALPHA</div>
+</div>
+
+<!-- Tutorial (first-run) -->
+<div id="tutorial">
+  <img id="tut-logo" src="assets/firebase_logo.PNG" alt="FIREBASE">
+  <div id="tutorial-steps">
+    <div class="tut-step"><div class="tut-num">1</div><div>Tap any <b style="color:#c8a030">◎ marker</b> on the map to deploy an artillery piece. Guns fire automatically.</div></div>
+    <div class="tut-step"><div class="tut-num">2</div><div>Enemies follow the <b style="color:#c04020">red route</b>. Reach <b style="color:#c8a030">FOB ALPHA</b> and you lose HP.</div></div>
+    <div class="tut-step"><div class="tut-num">3</div><div>Between waves, tap a gun to <b style="color:#c8a030">repair, resupply crew</b>, or <b style="color:#c0902a">dig in</b> for fortification.</div></div>
+    <div class="tut-step"><div class="tut-num">4</div><div>Complete groups to <b style="color:#c8a030">unlock weapons</b>, earn <b style="color:#c8a030">upgrades</b>, and get fire mission tokens.</div></div>
+    <div class="tut-step"><div class="tut-num">5</div><div>Guns earn <b style="color:#c8a030">rank</b> through kills — more damage, faster reload. Never displace a veteran.</div></div>
+  </div>
+  <button id="btn-tut-start" onclick="dismissTutorial()">▶ BEGIN MISSION</button>
+</div>
+
+<!-- Pause overlay -->
+<div id="pause-screen">
+  <div id="pause-label">PAUSED</div>
+  <div id="pause-hint">TAP ANYWHERE TO RESUME</div>
+</div>
+
+<!-- Last stand banner -->
+<div id="last-stand-banner">⚠ LAST STAND — FOB ALPHA CRITICAL ⚠</div>
+
+<!-- Speed button -->
+<button id="btn-speed" onclick="cycleSpeed()">1×</button>
 
 <canvas id="game-canvas"></canvas>
 
@@ -221,7 +586,7 @@
   <div class="hud-sep"></div>
   <div class="hud-block"><div class="hud-label">FOB</div><div class="hud-val" id="hud-fob">██████</div></div>
   <div class="hud-sep"></div>
-  <div class="hud-title">FIREBASE</div>
+  <div class="hud-title" id="hud-title-btn" onclick="togglePause()" style="cursor:pointer">FIREBASE</div>
   <div class="hud-sep"></div>
   <div class="hud-block"><div class="hud-label">Kills</div><div class="hud-val" id="hud-kills">0</div></div>
   <div class="hud-sep"></div>
@@ -234,12 +599,45 @@
   <div id="codex-body"></div>
 </div>
 
-<div id="controls">
-  <button class="ctrl-btn" id="btn-range" onclick="toggleRanges()">◎ RANGE</button>
-  <button class="ctrl-btn" onclick="resetCamera()">⊞ RESET</button>
-  <button class="ctrl-btn" id="btn-codex" onclick="toggleCodex()">☰ INTEL</button>
-  <button id="btn-fire-mission" onclick="toggleFireMission()">☢ FIRE MISSION (0)</button>
-  <button class="ctrl-btn" id="btn-route-edit" onclick="toggleRouteEdit()">✎ EDIT</button>
+<!-- Hamburger button -->
+<button id="btn-hamburger" onclick="toggleMenu()">
+  <div class="ham-line"></div>
+  <div class="ham-line"></div>
+  <div class="ham-line"></div>
+</button>
+
+<!-- Click-outside overlay -->
+<div id="menu-overlay" onclick="closeMenu()"></div>
+
+<!-- Side menu -->
+<div id="side-menu">
+  <div id="side-menu-title">Options</div>
+  <button class="menu-btn" id="mb-range" onclick="toggleRanges()">
+    <span class="menu-icon">◎</span> Range Rings
+  </button>
+  <button class="menu-btn" id="mb-intel" onclick="toggleCodex()">
+    <span class="menu-icon">☰</span> Wave Intel
+  </button>
+  <button class="menu-btn" id="mb-reset" onclick="resetCamera()">
+    <span class="menu-icon">⊞</span> Reset View
+  </button>
+  <button class="menu-btn" id="mb-pause" onclick="togglePause()">
+    <span class="menu-icon">⏸</span> Pause
+  </button>
+  <button class="menu-btn" id="mb-fm" onclick="toggleFireMission()">
+    <span class="menu-icon">☢</span> Fire Mission
+  </button>
+  <div id="side-menu-title" style="margin-top:6px">Deploy Assets</div>
+  <button class="menu-btn" id="mb-place-fdc" onclick="activatePlacement('fdc')">
+    <span class="menu-icon">📡</span> Place FDC — $280
+  </button>
+  <button class="menu-btn" id="mb-place-fo" onclick="activatePlacement('fo')">
+    <span class="menu-icon">👁</span> Place Obs. — $160
+  </button>
+  <button class="menu-btn" id="mb-sound" onclick="toggleSound()">
+    <span class="menu-icon">♪</span> Sound
+    <div class="menu-toggle on" id="sound-toggle"></div>
+  </button>
 </div>
 
 <!-- Coordinate toast for route editing -->
@@ -267,19 +665,50 @@
     <div id="gun-info-name"></div>
     <button id="gun-info-close" onclick="closeGunInfo()">✕ CLOSE</button>
   </div>
+  <!-- Fire Mode Toggle — shown when FDC coverage available -->
+  <div id="fire-mode-wrap">
+    <div id="fire-mode-label">Fire Mode</div>
+    <div id="fire-mode-btns">
+      <button class="fmode-btn active" id="fmode-direct" onclick="setFireMode('direct')">⊸ Direct</button>
+      <button class="fmode-btn" id="fmode-indirect" onclick="setFireMode('indirect')">↑ Indirect</button>
+    </div>
+    <div id="fdc-coverage-note"></div>
+    <div id="defilade-warn">⚠ DEFILADE — DIRECT FIRE BLOCKED</div>
+  </div>
   <div id="gun-info-stats"></div>
   <div id="gun-info-hp" style="display:flex;align-items:center;gap:3px;"></div>
   <div id="gun-info-crew" style="display:flex;align-items:center;gap:3px;"></div>
   <div style="display:flex;gap:8px;margin-top:2px;">
-    <button id="btn-repair" onclick="repairGun()" style="flex:1;background:rgba(6,20,6,.9);border:1px solid #2a6010;color:#6ab030;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;"></button>
-    <button id="btn-displace" onclick="displaceGun()" style="flex:1;background:rgba(40,12,6,.9);border:1px solid #7a2010;color:#c05030;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.14em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;"></button>
+    <button id="btn-repair" onclick="repairGun()" style="flex:1;background:linear-gradient(180deg,#0e200a,#080e04);border:1px solid #2a5010;color:#5a9030;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;"></button>
+    <button id="btn-displace" onclick="displaceGun()" style="flex:1;background:linear-gradient(180deg,#2a0e08,#1a0806);border:1px solid #7a2010;color:#c05030;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.14em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;"></button>
   </div>
-  <button id="btn-crew" onclick="resupplyCrew()" style="width:100%;background:rgba(6,14,20,.9);border:1px solid #1a5070;color:#40a0c0;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;margin-top:4px;"></button>
+  <button id="btn-crew" onclick="resupplyCrew()" style="width:100%;background:linear-gradient(180deg,#0a1420,#060e14);border:1px solid #1a4060;color:#3a90b0;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;margin-top:4px;"></button>
+  <!-- Dig-In section -->
+  <div id="dig-row">
+    <div id="dig-status"></div>
+    <div id="dig-progress-wrap" style="display:none"><div id="dig-progress-bar"></div></div>
+    <button id="btn-dig" onclick="digIn()"></button>
+    <button id="btn-camo" onclick="applyGunCamo()" style="display:none;margin-top:4px;width:100%;background:linear-gradient(180deg,#0e180a,#080e06);border:1px solid #2a4010;color:#6a9030;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;letter-spacing:.12em;text-transform:uppercase;padding:9px;cursor:pointer;text-align:center;"></button>
+  </div>
+</div>
+
+<!-- FDC / FO Unit Info Panel -->
+<div id="unit-info">
+  <div id="unit-info-header">
+    <div id="unit-info-name"></div>
+    <button id="unit-info-close" onclick="closeUnitInfo()">✕ CLOSE</button>
+  </div>
+  <div id="unit-info-body">
+    <div id="unit-hp-row"><span class="unit-hp-label">HP</span></div>
+    <button id="btn-conceal" onclick="toggleConceal()"></button>
+    <button id="btn-remove-unit" onclick="removeUnit()">✕ REMOVE UNIT</button>
+  </div>
 </div>
 
 <div id="end-screen">
   <div id="end-title"></div>
   <div id="end-sub"></div>
+  <div id="end-best"></div>
   <button id="btn-restart" onclick="restartGame()">↺ RESTART</button>
 </div>
 
@@ -395,55 +824,72 @@ const PATH_FRACS = [
 const FOB_IDX = PATH_FRACS.length - 1;
 
 const SLOT_FRACS = [
-  // ── NORTH ZONE — Woodbury valley flat farmland ──
-  [0.550, 0.108],   //  0  Woodbury village, valley floor
-  [0.450, 0.142],   //  1  North valley, west of road
-  [0.635, 0.152],   //  2  East of Woodbury, open flat
-  [0.320, 0.172],   //  3  Bloomfield corridor, gentle slope
-  [0.740, 0.185],   //  4  Broad Top east valley, flat
-  [0.620, 0.210],   //  5  Yellow Mountain west foot, flat shelf
+  // ── ROW 1 (y≈0.09) ──
+  [0.107, 0.090],   //  0  near "Ring", upper-left valley
+  [0.424, 0.110],   //  1  top-centre, north of Woodbury
+  [0.710, 0.105],   //  2  upper-right, east corridor
 
-  // ── UPPER-MID ZONE — South Woodbury valley + east corridor ──
-  [0.355, 0.262],   //  6  South Woodbury valley floor (flanks route left)
-  [0.195, 0.305],   //  7  Dunning Mountain hollow approach, flat
-  [0.430, 0.316],   //  8  Valley floor, east of route bend
-  [0.562, 0.300],   //  9  Yellow Mtn west base, open bench
-  [0.782, 0.295],   // 10  Warrior Ridge east valley — notably flat
-  [0.845, 0.328],   // 11  Juniata corridor, broad flat
+  // ── ROW 2 (y≈0.17-0.22) ──
+  [0.174, 0.171],   //  3  far-left, Bloomfield west
+  [0.326, 0.183],   //  4  Bloomfield valley
+  [0.422, 0.161],   //  5  near Woodbury village
+  [0.622, 0.211],   //  6  right of centre, flat bench
+  [0.847, 0.184],   //  7  far-right, east corridor flat
 
-  // ── MIDDLE ZONE — Dunning Cove + Yellow Creek + east flat ──
-  [0.460, 0.398],   // 12  Centre valley, flanks route at 12
-  [0.228, 0.425],   // 13  Dunning Cove approach, flat hollow
-  [0.548, 0.415],   // 14  Yellow Creek valley floor
-  [0.792, 0.418],   // 15  Hopewell area, flat floodplain
-  [0.858, 0.455],   // 16  East valley, very broad flat
+  // ── ROW 3 (y≈0.26-0.30) ──
+  [0.137, 0.246],   //  8  far-left, below Dunning
+  [0.298, 0.264],   //  9  left valley
+  [0.344, 0.286],   // 10  left valley (close pair)
+  [0.433, 0.295],   // 11  centre valley, New Enterprise area
+  [0.578, 0.277],   // 12  Yellow Mountain west base
+  [0.839, 0.291],   // 13  Warrior Ridge east, flat
 
-  // ── MID-LOW ZONE — Dunning Cove floor + centre valley ──
-  [0.222, 0.525],   // 17  Dunning Cove centre — flattest ground on west side
-  [0.470, 0.510],   // 18  Yellow Creek valley floor, open
-  [0.570, 0.488],   // 19  East of Terrace Mountain, bench flat
-  [0.802, 0.508],   // 20  East valley, wide open flat
-  [0.870, 0.542],   // 21  Broad Juniata valley flat
+  // ── ROW 4 (y≈0.35-0.39) ──
+  [0.119, 0.353],   // 14  far-left hollow
+  [0.201, 0.317],   // 15  left, below Dunning Mountain
+  [0.271, 0.348],   // 16  centre-left valley
+  [0.491, 0.390],   // 17  centre, Locust Mills flat
+  [0.611, 0.379],   // 18  centre-right, Yellow Creek area
+  [0.814, 0.369],   // 19  far-right, broad flat east
 
-  // ── LOWER-MID ZONE — Hollows + creek valleys ──
-  [0.248, 0.618],   // 22  Lower Dunning Cove, very flat floor
-  [0.198, 0.682],   // 23  Lower west hollow
-  [0.462, 0.598],   // 24  Spruce Creek valley bench
-  [0.645, 0.602],   // 25  Centre valley floor
-  [0.802, 0.618],   // 26  Sherman Valley flat
-  [0.862, 0.648],   // 27  East floodplain bench
+  // ── ROW 5 (y≈0.44-0.48) ──
+  [0.107, 0.446],   // 20  far-left
+  [0.177, 0.447],   // 21  left
+  [0.351, 0.460],   // 22  centre-left
+  [0.674, 0.478],   // 23  right, Cypher area flat
 
-  // ── LOWER ZONE — Pre-FOB coverage ──
-  [0.285, 0.748],   // 28  Lower-left valley floor
-  [0.355, 0.722],   // 29  Flat above the lower road
-  [0.565, 0.718],   // 30  Lower centre valley
-  [0.702, 0.758],   // 31  Bloody Run flat area
-  [0.842, 0.758],   // 32  Raystown Branch flat
+  // ── ROW 6 (y≈0.52-0.55) ──
+  [0.223, 0.486],   // 24  far-left, Dunning Cove
+  [0.164, 0.522],   // 25  left, Dunning Cove flat
+  [0.264, 0.530],   // 26  centre-left
+  [0.383, 0.553],   // 27  centre, Foreman area
+  [0.551, 0.490],   // 28  centre-right
+  [0.647, 0.543],   // 29  right valley flat
 
-  // ── FOB BASE — 3 hardened positions, Everett floodplain ──
-  [0.728, 0.882],   // 33  FOB west flank, river flat
-  [0.802, 0.912],   // 34  FOB south, deep Raystown flat
-  [0.858, 0.876],   // 35  FOB east, valley floor
+  // ── ROW 7 (y≈0.60-0.64) ──
+  [0.171, 0.605],   // 30  left, Andersonburg hollow
+  [0.309, 0.612],   // 31  centre-left
+  [0.421, 0.628],   // 32  centre
+  [0.486, 0.635],   // 33  centre-right
+  [0.658, 0.628],   // 34  right
+
+  // ── ROW 8 (y≈0.68-0.72) ──
+  [0.159, 0.692],   // 35  left valley floor
+  [0.336, 0.683],   // 36  centre-left
+  [0.434, 0.707],   // 37  centre
+  [0.492, 0.714],   // 38  centre-right
+  [0.688, 0.699],   // 39  right, Sherman Valley flat
+
+  // ── ROW 9 (y≈0.76-0.82) ──
+  [0.157, 0.776],   // 40  far-left, lower valley
+  [0.336, 0.759],   // 41  centre-left
+  [0.433, 0.786],   // 42  centre
+  [0.497, 0.820],   // 43  centre-right, West Providence
+
+  // ── BASE POSITIONS — 3 hardened slots near FOB, Everett floodplain ──
+  [0.680, 0.791],   // 44  FOB west flank
+  [0.841, 0.800],   // 45  FOB north flank
+  [0.870, 0.860],   // 46  FOB close defence
 ];
 
 // ═══════════════════════════════════════════════════
@@ -641,7 +1087,7 @@ const ENEMY_DEFS = {
     armor:.18, reward:200, damage:5, color:'#2a2a18',
     mapKey:'tos_map',
     // Boss rockets — fires bursts of 3 at gun positions, massive splash
-    bossRockets:true, bossRocketRate:280, bossRocketDmg:180, bossRocketSplash:55,
+    bossRockets:true, bossRocketRate:480, bossRocketDmg:18, bossRocketSplash:40,
     draw(ctx,sz,flash) {
       // Tank chassis + massive rocket pod
       ctx.fillStyle = flash?'#fff':'#2a2a18';
@@ -699,7 +1145,7 @@ function generateWaveGroups() {
   if (isBossWave()) {
     // Boss: TOS + T-80 escort + Msta support + drones
     return [
-      { t:'tos',      n: Math.min(1+Math.floor((g-1)/2), 3), hpMult },
+      { t:'tos',      n: 1,                                                        hpMult },
       { t:'tank_t80', n: cnt(2+Math.floor(g/2)),              hpMult },
       { t:'msta',     n: Math.max(0, Math.floor(g/2)),        hpMult },
       { t:'drone',    n: cnt(6+g),                             hpMult },
@@ -765,7 +1211,149 @@ function shuffleArray(arr) {
 
 // Recompute a gun's effective stats from base + active upgrades
 // ═══════════════════════════════════════════════════
-// GUN RANK SYSTEM
+// ═══════════════════════════════════════════════════
+// SOUND ENGINE  (real audio files + Web Audio synthesis fallback)
+// ═══════════════════════════════════════════════════
+const _ac = (()=>{ try { return new (window.AudioContext||window.webkitAudioContext)(); } catch(e){return null;} })();
+let _soundEnabled = true;
+function _resumeAC() { if (_ac && _ac.state==='suspended') _ac.resume(); }
+const _master = _ac ? (()=>{ const g=_ac.createGain(); g.gain.value=0.72; g.connect(_ac.destination); return g; })() : null;
+function _out(node) { if (_master) node.connect(_master); }
+
+// Decoded audio buffers keyed by name
+const _buffers = {};
+function _loadAudio(name, src) {
+  if (!_ac) return;
+  fetch(src)
+    .then(r => r.arrayBuffer())
+    .then(ab => _ac.decodeAudioData(ab, buf => { _buffers[name] = buf; }, ()=>{} ))
+    .catch(()=>{});
+}
+function _playBuffer(name, volume=1.0, playbackRate=1.0) {
+  if (!_ac || !_buffers[name]) return false;
+  _resumeAC();
+  const s = _ac.createBufferSource();
+  s.buffer = _buffers[name];
+  s.playbackRate.value = playbackRate;
+  const g = _ac.createGain(); g.gain.value = volume;
+  s.connect(g); _out(g); s.start();
+  return true;
+}
+
+// Load all real files
+_loadAudio('cannon',      'assets/cannon.mp3');
+_loadAudio('rocket',      'assets/rocket.mp3');
+_loadAudio('explosion',   'assets/explosion.mp3');
+_loadAudio('machine_gun', 'assets/machine_gun.mp3');
+_loadAudio('enemy_shot',  'assets/enemy_shot.mp3');
+
+function playSound(type) {
+  if (!_ac || !_soundEnabled) return;
+  _resumeAC();
+  const t = _ac.currentTime;
+
+  if (type==='tap') {
+    // Subtle UI tap — synthesized, no file needed
+    const len = Math.floor(_ac.sampleRate * 0.011);
+    const buf = _ac.createBuffer(1, len, _ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/len, 5);
+    const s=_ac.createBufferSource(); s.buffer=buf;
+    const bp=_ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1900; bp.Q.value=0.7;
+    const g=_ac.createGain(); g.gain.value=0.08;
+    s.connect(bp); bp.connect(g); _out(g); s.start(t);
+
+  } else if (type==='cannon') {
+    // Slight random pitch variation so repeated shots don't sound identical
+    const rate = 0.92 + Math.random() * 0.16;
+    if (!_playBuffer('cannon', 0.85, rate)) {
+      // Synthesis fallback
+      const crackLen=Math.floor(_ac.sampleRate*0.075);
+      const crackBuf=_ac.createBuffer(1,crackLen,_ac.sampleRate);
+      const cd=crackBuf.getChannelData(0);
+      for(let i=0;i<crackLen;i++) cd[i]=(Math.random()*2-1)*Math.pow(1-i/crackLen,2.2);
+      const crack=_ac.createBufferSource(); crack.buffer=crackBuf;
+      const crackHP=_ac.createBiquadFilter(); crackHP.type='highpass'; crackHP.frequency.value=320;
+      const crackG=_ac.createGain(); crackG.gain.setValueAtTime(1.0,t); crackG.gain.exponentialRampToValueAtTime(0.001,t+0.075);
+      crack.connect(crackHP); crackHP.connect(crackG); _out(crackG); crack.start(t);
+      const pO=_ac.createOscillator(); pO.type='sine';
+      pO.frequency.setValueAtTime(68,t); pO.frequency.exponentialRampToValueAtTime(32,t+0.38);
+      const pG=_ac.createGain(); pG.gain.setValueAtTime(0.0,t); pG.gain.linearRampToValueAtTime(0.70,t+0.020); pG.gain.exponentialRampToValueAtTime(0.001,t+0.42);
+      pO.connect(pG); _out(pG); pO.start(t); pO.stop(t+0.42);
+    }
+
+  } else if (type==='rocket') {
+    const rate = 0.94 + Math.random() * 0.12;
+    if (!_playBuffer('rocket', 0.75, rate)) {
+      const o=_ac.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(52,t); o.frequency.exponentialRampToValueAtTime(175,t+0.42);
+      const f=_ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=95; f.Q.value=1.4;
+      const g=_ac.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.26,t+0.04); g.gain.exponentialRampToValueAtTime(0.001,t+0.52);
+      o.connect(f); f.connect(g); _out(g); o.start(t); o.stop(t+0.52);
+    }
+
+  } else if (type==='explosion') {
+    const rate = 0.90 + Math.random() * 0.20;
+    if (!_playBuffer('explosion', 0.80, rate)) {
+      const len=Math.floor(_ac.sampleRate*0.70);
+      const buf2=_ac.createBuffer(1,len,_ac.sampleRate);
+      const d2=buf2.getChannelData(0);
+      for(let i=0;i<len;i++) d2[i]=(Math.random()*2-1)*Math.pow(1-i/len,1.1);
+      const s2=_ac.createBufferSource(); s2.buffer=buf2;
+      const lp=_ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=155;
+      const g2=_ac.createGain(); g2.gain.setValueAtTime(0.85,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.70);
+      s2.connect(lp); lp.connect(g2); _out(g2); s2.start(t);
+    }
+
+  } else if (type==='mg') {
+    const rate = 0.90 + Math.random() * 0.20;
+    if (!_playBuffer('machine_gun', 0.55, rate)) {
+      const len=Math.floor(_ac.sampleRate*0.052);
+      const buf3=_ac.createBuffer(1,len,_ac.sampleRate);
+      const d3=buf3.getChannelData(0);
+      for(let i=0;i<len;i++) d3[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2);
+      const s3=_ac.createBufferSource(); s3.buffer=buf3;
+      const f3=_ac.createBiquadFilter(); f3.type='highpass'; f3.frequency.value=650;
+      const g3=_ac.createGain(); g3.gain.value=0.25;
+      s3.connect(f3); f3.connect(g3); _out(g3); s3.start(t);
+    }
+
+  } else if (type==='incoming') {
+    // enemy_shot used for counterfire/TOS incoming
+    const rate = 0.88 + Math.random() * 0.24;
+    if (!_playBuffer('enemy_shot', 0.60, rate)) {
+      const o=_ac.createOscillator(); o.type='sine';
+      o.frequency.setValueAtTime(340,t); o.frequency.exponentialRampToValueAtTime(1050,t+0.85);
+      const g=_ac.createGain(); g.gain.setValueAtTime(0.09,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.85);
+      o.connect(g); _out(g); o.start(t); o.stop(t+0.85);
+    }
+
+  } else if (type==='hit') {
+    // Metallic hit — synthesized
+    const o=_ac.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(680,t); o.frequency.exponentialRampToValueAtTime(170,t+0.14);
+    const g=_ac.createGain(); g.gain.setValueAtTime(0.14,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.14);
+    o.connect(g); _out(g); o.start(t); o.stop(t+0.14);
+
+  } else if (type==='rankup') {
+    // 3-note chime — synthesized
+    [660,880,1100].forEach((freq,i)=>{
+      const o=_ac.createOscillator(); o.type='sine'; o.frequency.value=freq;
+      const g=_ac.createGain(); const st=t+i*0.13;
+      g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.17,st+0.04);
+      g.gain.exponentialRampToValueAtTime(0.001,st+0.30);
+      o.connect(g); _out(g); o.start(st); o.stop(st+0.30);
+    });
+
+  } else if (type==='fobhit') {
+    // Low alarm buzz — synthesized
+    const o=_ac.createOscillator(); o.type='square'; o.frequency.value=92;
+    const f=_ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value=370;
+    const g=_ac.createGain(); g.gain.setValueAtTime(0.28,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.42);
+    o.connect(f); f.connect(g); _out(g); o.start(t); o.stop(t+0.42);
+  }
+}
+
 // Rank is earned per gun through kills. Lost on displace/replace.
 // ═══════════════════════════════════════════════════
 const RANKS = [
@@ -785,6 +1373,7 @@ function checkRankUp(gun) {
   if (next && gun.gunKills >= next.kills) {
     gun.rankIdx++;
     recalcGunStats(gun);
+    playSound('rankup');
     // Gold flash on rank up
     for (let i=0;i<6;i++) effects.push({
       fx: gun.fx + (Math.random()-.5)*0.02, fy: gun.fy + (Math.random()-.5)*0.02,
@@ -807,8 +1396,11 @@ function recalcGunStats(gun) {
     * (activeUpgrades.includes('hot_loads') ? 0.85 : 1));
   // Damage: base × rank (stored on gun so projectiles read it directly)
   gun.damage = Math.round(def.damage * rank.dmg);
-  // Max HP
-  gun.maxHp = 6 + (activeUpgrades.includes('hardened_post') ? 2 : 0);
+  // Max HP: base 6 + hardened_post upgrade + cumulative dig HP bonuses
+  const digHpBonus = DIG_STAGES.slice(0, gun.digLevel||0).reduce((s,d)=>s+d.hpBonus, 0);
+  gun.maxHp = 6
+    + (activeUpgrades.includes('hardened_post') ? 2 : 0)
+    + digHpBonus;
 }
 
 // ═══════════════════════════════════════════════════
@@ -842,6 +1434,16 @@ function loadImages(cb) {
     ['drone_map', 'assets/Drone_MapIcon.png'],
     ['msta_map',  'assets/MSTA_MapIcon.png'],
     ['tos_map',   'assets/TOS_MapIcon.png'],
+    // FDC + Forward Observer
+    ['fdc_map',   'assets/FDC_MapIcon.png'],
+    ['fdc_menu',  'assets/FDC_MenuIcon.png'],
+    ['fo_map',    'assets/ForwardObserver_MapIcon.png'],
+    ['fo_menu',   'assets/ForwardObserver_MenuIcon.png'],
+    // Emplacement images (static, face enemy road)
+    ['fort_scrape',  'assets/ScrapeIn.png'],
+    ['fort_sandbag', 'assets/SandBags.png'],
+    ['fort_harden',  'assets/Hardened.png'],
+    ['fort_camo',    'assets/CamoNetting.png'],
   ];
   let rem = list.length;
   list.forEach(([k,src]) => {
@@ -856,11 +1458,43 @@ function loadImages(cb) {
 // GAME STATE
 // ═══════════════════════════════════════════════════
 let groupNum=1, waveInGroup=1;   // replaces waveNum
-let fobHP=6, supply=200, kills=0;
+let fobHP=6, fobMaxHp=6, supply=200, kills=0;
 let waveActive=false, waveSpawnDone=false, gameOver=false;
 let showRanges=false, codexOpen=false;
 let enemies=[], projectiles=[], effects=[], cfShots=[], backblasts=[], bossRocketShots=[], placedGuns=[], gunSlots=[];
+let fdcUnits=[], foUnits=[];   // FDC and Forward Observer placed units
 let spawnQueue=[], spawnTimer=0;
+
+// ── DEFILADE ZONES ──
+// Route segment index ranges where direct fire is blocked/penalized
+// (enemy is "behind terrain" — requires indirect fire or very close gun)
+const DEFILADE_ZONES = [
+  { start:5,  end:9,  name:'DUNNING MTN DEFILADE' },   // far-left sweep behind Dunning Mountain
+  { start:13, end:16, name:'VALLEY DEFILADE' },          // south through Yellow Creek valley
+  { start:19, end:21, name:'LOWER HOLLOW DEFILADE' },    // lower west hollow
+  { start:22, end:25, name:'RIDGE ZIGZAG DEFILADE' },    // valley zigzag near FOB
+];
+const DEFILADE_CLOSE_DIST = 0.14;  // within 14% map diagonal = can still direct fire (close enough for line of sight)
+
+// ── FDC CONSTANTS ──
+const FDC_COST       = 280;
+const FDC_CONCEAL    = 70;
+const FDC_HP         = 4;
+const FDC_RADIUS     = 0.22;   // coverage as fraction of map diagonal
+const FO_COST        = 160;
+const FO_CONCEAL     = 50;
+const FO_HP          = 2;
+const FO_SPOT_RADIUS = 0.14;   // spotting radius as fraction of map diagonal
+
+// ── PLACEMENT MODE ──
+let placingMode  = null;   // 'fdc' | 'fo' | null
+let holdStartPos = null;   // {sx, sy} screen coords
+let holdStartTime= 0;
+let holdTimer    = null;
+const HOLD_MS    = 700;    // ms hold to place
+
+// ── SELECTED UNIT (FDC/FO INFO PANEL) ──
+let selectedUnit = null;   // { type:'fdc'|'fo', unit:obj }
 
 // Progression
 let unlockedGuns    = new Set(['M119']);   // gates the gun picker
@@ -868,11 +1502,47 @@ let activeUpgrades  = [];                  // array of upgrade keys
 let fireMissionTokens = 0;
 let fireMissionArmed  = false;
 let fireMissionPending= null;
-let routeEditMode     = false;   // shows waypoint/slot numbers + tap-to-copy coords
+let routeEditMode     = false;
+
+// Game flow
+let gamePaused   = false;
+let gameSpeed    = 1;        // 1, 2, or 3
+let lastStand    = false;    // FOB at 1 HP
+let passiveIncomeTick = 0;   // frames since last passive drip
+const PASSIVE_INCOME_FRAMES = 300;  // every 5s between waves
+const PASSIVE_INCOME_AMT    = 15;
+
+// Persistence
+let bestGroup = 0, bestWave = 0;
+function loadBest() {
+  try { bestGroup = +localStorage.getItem('fb_bestG')||0; bestWave = +localStorage.getItem('fb_bestW')||0; } catch(e){}
+}
+function saveBest() {
+  try {
+    if (groupNum > bestGroup || (groupNum===bestGroup && waveInGroup > bestWave)) {
+      bestGroup = groupNum; bestWave = waveInGroup;
+      localStorage.setItem('fb_bestG', bestGroup);
+      localStorage.setItem('fb_bestW', bestWave);
+    }
+  } catch(e){}
+}
+function bestLabel() {
+  return bestGroup ? `BEST: G${bestGroup}-W${bestWave}` : '';
+}
 const SPAWN_FRAMES = 80;
 const RECOIL_FRAMES = 10;
 const FLASH_FRAMES  = 6;
 const REPAIR_COST_PER_HP = 18;  // supply per HP restored
+
+// Fortification stages — cost, build time in frames, protection
+const DIG_STAGES = [
+  // dmgReduction: incoming damage multiplied by (1 - this)
+  // crewProt:     casualty chance multiplied by (1 - this)
+  // hpBonus:      added to maxHp when this level completes
+  { name:'SCRAPE IN',  label:'Scraped In',  cost:40,  frames:600,  dmgReduction:0.22, crewProt:0.25, hpBonus:2,  color:'#6a5030' },
+  { name:'SANDBAG',    label:'Sandbagged',  cost:80,  frames:1800, dmgReduction:0.50, crewProt:0.50, hpBonus:3,  color:'#8a7040' },
+  { name:'HARDEN',     label:'Hardened',    cost:150, frames:2700, dmgReduction:0.82, crewProt:0.75, hpBonus:5,  color:'#5a5545' },
+];
 let pendingSlotIdx = null;
 let selectedGunSlotIdx = null;  // currently open gun info panel
 
@@ -991,10 +1661,14 @@ function placeGun(key,idx) {
     recoilTimer:0, flashTimer:0,
     crew,
     mgTimer:0, mgAngle:-Math.PI/2, mgTarget:null,
-    gunKills:0, rankIdx:0,   // rank system
+    gunKills:0, rankIdx:0,
+    digLevel:0, isDigging:false, digTimer:0,
+    fortHp:0, fortMaxHp:0,           // emplacement absorbs damage before gun
+    fortAngle:null, camouflaged:false,   // emplacement orientation + camo state
   };
   s.gun=gun; placedGuns.push(gun);
   recalcGunStats(gun);   // apply any active upgrades
+  gun.hp = gun.maxHp;   // ensure full health (maxHp may be > 6 if hardened_post active)
   closePicker(); updateHUD();
 }
 
@@ -1039,6 +1713,27 @@ function openGunInfo(slotIdx) {
   const rankColor = gun.rankIdx >= 6 ? '#ffd700' : gun.rankIdx >= 3 ? '#c8b870' : '#7a8a50';
 
   document.getElementById('gun-info-name').textContent = def.label.toUpperCase();
+
+  // ── Fire Mode Toggle ──
+  const hasFDC     = gunInFDCCoverage(gun);
+  const fmWrap     = document.getElementById('fire-mode-wrap');
+  fmWrap.classList.toggle('visible', hasFDC);
+  if (hasFDC) {
+    if (!gun.fireMode) gun.fireMode = 'direct';
+    document.getElementById('fmode-direct').className   = 'fmode-btn' + (gun.fireMode==='direct'  ? ' active' : '');
+    document.getElementById('fmode-indirect').className = 'fmode-btn' + (gun.fireMode==='indirect' ? ' indirect-active' : '');
+    document.getElementById('fdc-coverage-note').textContent = gun.fireMode==='indirect'
+      ? '↑ INDIRECT — 2× range, area splash' : '⊸ DIRECT — fast, accurate, short range';
+    // Defilade warning
+    const defWarn = document.getElementById('defilade-warn');
+    const nearDefEnemy = enemies.find(e => !e.dead && isInDefilade(e) && !canDirectFire(gun, e));
+    defWarn.classList.toggle('show', !!nearDefEnemy && gun.fireMode==='direct');
+  } else {
+    // No FDC — lock to direct
+    gun.fireMode = 'direct';
+    document.getElementById('fdc-coverage-note').textContent = '';
+    document.getElementById('defilade-warn').classList.remove('show');
+  }
 
   document.getElementById('gun-info-stats').innerHTML = `
     <div class="info-stat"><div class="info-stat-label">Damage</div><div class="info-stat-val">${gun.damage}</div></div>
@@ -1125,6 +1820,71 @@ function openGunInfo(slotIdx) {
     crewBtn.style.display = 'none';
   }
 
+  // ── DIG IN section ──
+  const digStatusEl   = document.getElementById('dig-status');
+  const digProgressW  = document.getElementById('dig-progress-wrap');
+  const digProgressB  = document.getElementById('dig-progress-bar');
+  const digBtn        = document.getElementById('btn-dig');
+
+  // Level pips
+  const digPipLabels = ['scrape','sandbag','harden'];
+  let digPips = '<div style="display:flex;gap:3px;align-items:center;margin-right:8px">';
+  for (let i=0;i<3;i++) {
+    const cls = i < gun.digLevel ? digPipLabels[i] : 'empty';
+    digPips += `<div class="dig-pip ${cls}" title="${DIG_STAGES[i].label}"></div>`;
+  }
+  digPips += '</div>';
+  const digLabel = gun.digLevel === 0 ? 'UNFORTIFIED'
+    : gun.isDigging ? `BUILDING: ${DIG_STAGES[gun.digLevel].label}...`
+    : DIG_STAGES[gun.digLevel-1].label.toUpperCase();
+  digStatusEl.innerHTML = digPips + `<span>${digLabel}</span>`;
+
+  // Progress bar
+  if (gun.isDigging) {
+    const pct = (1 - gun.digTimer/DIG_STAGES[gun.digLevel].frames)*100;
+    digProgressW.style.display = 'block';
+    digProgressB.style.width   = pct + '%';
+    digProgressB.style.background = DIG_STAGES[gun.digLevel].color;
+  } else {
+    digProgressW.style.display = 'none';
+  }
+
+  // Dig button
+  if (gun.digLevel >= DIG_STAGES.length) {
+    digBtn.textContent = '⬡ POSITION FULLY HARDENED';
+    digBtn.className   = 'maxed';
+  } else if (gun.isDigging) {
+    const secsLeft = Math.ceil(gun.digTimer/60);
+    digBtn.textContent = `⛏ DIGGING — ${secsLeft}s REMAINING`;
+    digBtn.className   = 'digging';
+  } else if (waveActive) {
+    digBtn.textContent = `⛏ ${DIG_STAGES[gun.digLevel].name} — AVAILABLE BETWEEN WAVES`;
+    digBtn.className   = 'maxed';
+  } else {
+    const next = DIG_STAGES[gun.digLevel];
+    const secs = next.frames/60;
+    const canAfford = supply >= next.cost;
+    digBtn.textContent = `⛏ ${next.name} — $${next.cost} · ${secs}s`;
+    digBtn.className   = canAfford ? '' : 'maxed';
+  }
+
+  // Camouflage button (available once any dig level complete)
+  const camoBtn = document.getElementById('btn-camo');
+  if (camoBtn) {
+    if (gun.digLevel > 0) {
+      camoBtn.style.display = 'block';
+      if (gun.camouflaged) {
+        camoBtn.textContent = '🌿 CAMOUFLAGED — ACTIVE';
+        camoBtn.className   = 'btn-dig active';
+      } else {
+        camoBtn.textContent = `🌿 CAMOUFLAGE — $60`;
+        camoBtn.className   = supply >= 60 ? 'btn-dig' : 'btn-dig maxed';
+      }
+    } else {
+      camoBtn.style.display = 'none';
+    }
+  }
+
   document.getElementById('gun-info').classList.add('open');
 }
 
@@ -1132,6 +1892,45 @@ function closeGunInfo() {
   document.getElementById('gun-info').classList.remove('open');
   selectedGunSlotIdx = null;
 }
+
+function applyGunCamo() {
+  if (selectedGunSlotIdx === null) return;
+  const gun = gunSlots[selectedGunSlotIdx]?.gun;
+  if (!gun || gun.camouflaged || gun.digLevel === 0) return;
+  if (supply < 60) return;
+  supply -= 60;
+  gun.camouflaged = true;
+  updateHUD();
+  openGunInfo(selectedGunSlotIdx);
+  playSound('tap');
+}
+
+// Refresh dig countdown + HP every second while panel is open
+setInterval(() => {
+  if (selectedGunSlotIdx === null) return;
+  const slot = gunSlots[selectedGunSlotIdx];
+  if (!slot?.occupied) return;
+  const gun = slot.gun;
+
+  // Live HP pips
+  const hpEl = document.getElementById('gun-info-hp');
+  if (hpEl && hpEl.children.length > 1) {
+    const pips = hpEl.querySelectorAll('.hp-pip');
+    pips.forEach((pip, i) => {
+      pip.className = 'hp-pip ' + (i < gun.hp ? 'full' : 'empty');
+    });
+  }
+
+  if (!gun.isDigging) return;
+  const secsLeft = Math.ceil(gun.digTimer / 60);
+  const btn = document.getElementById('btn-dig');
+  if (btn) btn.textContent = `⛏ DIGGING — ${secsLeft}s REMAINING`;
+  const bar = document.getElementById('dig-progress-bar');
+  if (bar) {
+    const pct = (1 - gun.digTimer / DIG_STAGES[gun.digLevel].frames) * 100;
+    bar.style.width = pct + '%';
+  }
+}, 1000);
 
 function repairGun() {
   if (selectedGunSlotIdx === null) return;
@@ -1170,22 +1969,51 @@ function displaceGun() {
   const def  = GUN_DEFS[gun.gunKey];
   const refund = Math.floor(def.cost * 0.8);
   supply += refund;
-  // Remove from placedGuns
-  const idx = placedGuns.indexOf(gun);
-  if (idx > -1) placedGuns.splice(idx, 1);
+  // Filter by slotIdx — more robust than indexOf when references shift
+  placedGuns = placedGuns.filter(g => g.slotIdx !== gun.slotIdx);
+  gun.fireMode    = 'direct';
+  gun.fortAngle   = null;
+  gun.camouflaged = false;
+  gun.fortHp      = 0;
+  gun.fortMaxHp   = 0;
+  // Kill any in-flight projectiles from this gun to prevent ghost shots
+  for (const p of projectiles) { if (p.sourceGun === gun) p.dead = true; }
   slot.occupied = false;
   slot.gun = null;
   closeGunInfo();
   updateHUD();
 }
 
-// ═══════════════════════════════════════════════════
-// CODEX / INTEL PANEL
-// ═══════════════════════════════════════════════════
+function digIn() {
+  if (selectedGunSlotIdx === null) return;
+  if (waveActive) return;   // initiation requires between waves
+  const slot = gunSlots[selectedGunSlotIdx];
+  if (!slot?.occupied) return;
+  const gun  = slot.gun;
+  if (gun.isDigging || gun.digLevel >= DIG_STAGES.length) return;
+  const stage = DIG_STAGES[gun.digLevel];
+  if (supply < stage.cost) return;
+  supply -= stage.cost;
+  gun.isDigging = true;
+  gun.digTimer  = stage.frames;
+  // Lock emplacement orientation toward nearest enemy route point (static forever after)
+  if (gun.fortAngle === null) {
+    let nearestD = Infinity;
+    let nearestPt = PATH_FRACS[0];
+    for (const pt of PATH_FRACS) {
+      const d = Math.hypot((pt[0]-gun.fx)*mapNatW, (pt[1]-gun.fy)*mapNatH);
+      if (d < nearestD) { nearestD=d; nearestPt=pt; }
+    }
+    // fortAngle = direction FROM gun TOWARD nearest route = front of emplacement faces enemy
+    gun.fortAngle = Math.atan2((nearestPt[1]-gun.fy)*mapNatH, (nearestPt[0]-gun.fx)*mapNatW);
+  }
+  updateHUD();
+  openGunInfo(selectedGunSlotIdx);
+}
 function toggleCodex() {
   codexOpen=!codexOpen;
   document.getElementById('codex').classList.toggle('open',codexOpen);
-  document.getElementById('btn-codex').classList.toggle('active',codexOpen);
+  updateMenuStates();
   if (codexOpen) refreshCodex();
 }
 function refreshCodex() {
@@ -1218,8 +2046,16 @@ const DRAG_PX=7;
 canvas.addEventListener('pointerdown',e=>{
   ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
   canvas.setPointerCapture(e.pointerId);
-  if (Object.keys(ptrs).length===1) { dragStart={cfx:camFx,cfy:camFy,sx:e.clientX,sy:e.clientY}; didDrag=false; }
-  if (Object.keys(ptrs).length===2) { lastPinchDist=pinchDist(); dragStart=null; }
+  if (Object.keys(ptrs).length===1) {
+    dragStart={cfx:camFx,cfy:camFy,sx:e.clientX,sy:e.clientY}; didDrag=false;
+    // Start hold timer if in placement mode
+    if (placingMode && e.clientY > HUD_H) {
+      holdStartPos  = {sx:e.clientX, sy:e.clientY};
+      holdStartTime = performance.now();
+      holdTimer     = setTimeout(()=>{ executePlacement(e.clientX,e.clientY); holdStartPos=null; }, HOLD_MS);
+    }
+  }
+  if (Object.keys(ptrs).length===2) { lastPinchDist=pinchDist(); dragStart=null; clearTimeout(holdTimer); holdTimer=null; holdStartPos=null; }
 });
 canvas.addEventListener('pointermove',e=>{
   if (!ptrs[e.pointerId]) return;
@@ -1231,13 +2067,19 @@ canvas.addEventListener('pointermove',e=>{
     lastPinchDist=d;
   } else if (pts.length===1 && dragStart) {
     const dx=e.clientX-dragStart.sx, dy=e.clientY-dragStart.sy;
-    if (Math.hypot(dx,dy)>DRAG_PX) didDrag=true;
+    if (Math.hypot(dx,dy)>DRAG_PX) {
+      didDrag=true;
+      // Cancel hold if finger moves too far
+      if (holdTimer && Math.hypot(dx,dy)>DRAG_PX) { clearTimeout(holdTimer); holdTimer=null; holdStartPos=null; }
+    }
     if (didDrag) { camFx=dragStart.cfx-dx/(camZ*mapNatW); camFy=dragStart.cfy-dy/(camZ*mapNatH); clampCam(); }
   }
 });
 canvas.addEventListener('pointerup',e=>{
   const wasSingle=Object.keys(ptrs).length===1;
   delete ptrs[e.pointerId]; lastPinchDist=null;
+  // Cancel hold on lift (if timer didn't fire yet)
+  clearTimeout(holdTimer); holdTimer=null; holdStartPos=null;
   if (wasSingle&&!didDrag) handleTap(e.clientX,e.clientY);
   if (Object.keys(ptrs).length===0) dragStart=null;
 });
@@ -1248,18 +2090,32 @@ function pinchDist() { const p=Object.values(ptrs); return Math.hypot(p[1].x-p[0
 function handleTap(sx,sy) {
   if (gameOver||sy<HUD_H) return;
 
-  // Route edit mode — tap anywhere to show/copy coordinates
+  // Cancel placement on tap (short tap = cancel, hold = place)
+  if (placingMode) { cancelPlacement(); return; }
+
   if (routeEditMode) {
     const [fx, fy] = scrToMf(sx, sy);
     showCoordToast(fx, fy);
     return;
   }
 
-  // Fire mission targeting
   if (fireMissionArmed) {
     const [fx,fy] = scrToMf(sx,sy);
     launchFireMission(fx,fy);
     return;
+  }
+
+  // Tap on FDC unit
+  for (const fdc of fdcUnits) {
+    if (fdc.dead) continue;
+    const [fx2,fy2]=mfToScr(fdc.fx,fdc.fy);
+    if (Math.hypot(sx-fx2,sy-fy2)<28) { closeGunInfo(); openUnitInfo('fdc',fdc); return; }
+  }
+  // Tap on FO unit
+  for (const fo of foUnits) {
+    if (fo.dead) continue;
+    const [fx2,fy2]=mfToScr(fo.fx,fo.fy);
+    if (Math.hypot(sx-fx2,sy-fy2)<24) { closeGunInfo(); openUnitInfo('fo',fo); return; }
   }
 
   for (let i=0;i<gunSlots.length;i++) {
@@ -1278,7 +2134,35 @@ function handleTap(sx,sy) {
 // UPDATE
 // ═══════════════════════════════════════════════════
 function update() {
-  if (gameOver||!waveActive) return;
+  if (gameOver) return;
+
+  // ── Always runs (wave or not) ──
+  // Dig-in timers — digging continues through waves and between them
+  for (const gun of placedGuns) {
+    if (gun.isDigging && gun.digTimer > 0) {
+      gun.digTimer--;
+      if (gun.digTimer <= 0) {
+        gun.isDigging = false;
+        gun.digLevel++;
+        // Emplacement HP — absorbs all incoming damage before gun takes any
+        gun.fortMaxHp += DIG_STAGES[gun.digLevel-1].hpBonus;
+        gun.fortHp     = Math.min(gun.fortHp + DIG_STAGES[gun.digLevel-1].hpBonus, gun.fortMaxHp);
+        // Recalc stats — this increases maxHp via hpBonus
+        const prevMax = gun.maxHp;
+        recalcGunStats(gun);
+        const hpGain = gun.maxHp - prevMax;
+        if (hpGain > 0) gun.hp = Math.min(gun.hp + hpGain, gun.maxHp);
+        for (let i=0;i<8;i++) effects.push({
+          fx:gun.fx+(Math.random()-.5)*0.015, fy:gun.fy+(Math.random()-.5)*0.015,
+          color:DIG_STAGES[gun.digLevel-1].color, life:28, maxLife:28,
+        });
+        if (selectedGunSlotIdx !== null && gunSlots[selectedGunSlotIdx]?.gun === gun)
+          openGunInfo(selectedGunSlotIdx);
+      }
+    }
+  }
+
+  if (!waveActive) return;
 
   // Spawn
   if (spawnQueue.length>0) {
@@ -1305,6 +2189,8 @@ function update() {
           if (d<bestD) { bestGun=g; bestD=d; }
         }
         if (bestGun) {
+          // Camouflaged emplacement: 70% chance enemy can't acquire target
+          if (bestGun.camouflaged && bestGun.digLevel > 0 && Math.random() < 0.70) continue;
           const ang=Math.atan2((bestGun.fy-e.fy)*mapNatH,(bestGun.fx-e.fx)*mapNatW);
           cfShots.push({
             fx:e.fx, fy:e.fy,
@@ -1318,34 +2204,43 @@ function update() {
     // ── BOSS ROCKETS (TOS-1) ──
     if (ENEMY_DEFS[e.type].bossRockets && placedGuns.length > 0) {
       const def = ENEMY_DEFS[e.type];
-      if (!e.bossRocketTimer) e.bossRocketTimer = Math.floor(Math.random()*120)+60;
+      if (!e.bossRocketTimer) e.bossRocketTimer = Math.floor(Math.random()*160)+80;
       e.bossRocketTimer--;
       if (e.bossRocketTimer <= 0) {
         e.bossRocketTimer = def.bossRocketRate;
-        // Pick a random gun as target for each of the 3 rockets
-        for (let r=0; r<3; r++) {
-          const target = placedGuns[Math.floor(Math.random()*placedGuns.length)];
-          const ang = Math.atan2((target.fy-e.fy)*mapNatH,(target.fx-e.fx)*mapNatW);
-          // Slight spread between rockets
-          const spread = (r-1) * 0.08;
-          const ba = ang + spread;
-          const spd = 1.6;
-          bossRocketShots.push({
-            fx:e.fx, fy:e.fy,
-            dfx: spd*Math.cos(ba)/mapNatW,
-            dfy: spd*Math.sin(ba)/mapNatH,
-            targetFx:target.fx, targetFy:target.fy,
-            dmg:def.bossRocketDmg, splash:def.bossRocketSplash,
-            dead:false, trail:[], age:0,
-          });
-        }
+        // 25% chance to miss entirely (foliage, smoke, evasion)
+        if (Math.random() < 0.25) { addFx(e.fx,e.fy,'rgba(80,60,20,1)',6); continue; }
+        const target = placedGuns[Math.floor(Math.random()*placedGuns.length)];
+        const distNat = Math.hypot((target.fx-e.fx)*mapNatW, (target.fy-e.fy)*mapNatH);
+        const diagNat = Math.hypot(mapNatW, mapNatH);
+        // Inaccuracy grows with distance — short range near-guaranteed hit,
+        // long range rocket can land up to ~8% of map diagonal away from target
+        const maxSpread = 0.06 * (distNat / diagNat);
+        const spreadX = (Math.random()-0.5) * 2 * maxSpread;
+        const spreadY = (Math.random()-0.5) * 2 * maxSpread;
+        const aimFx = target.fx + spreadX;
+        const aimFy = target.fy + spreadY;
+        const ang = Math.atan2((aimFy-e.fy)*mapNatH, (aimFx-e.fx)*mapNatW);
+        const spd = 1.6;
+        bossRocketShots.push({
+          fx:e.fx, fy:e.fy,
+          dfx: spd*Math.cos(ang)/mapNatW,
+          dfy: spd*Math.sin(ang)/mapNatH,
+          targetFx: aimFx,
+          targetFy: aimFy,
+          dmg:def.bossRocketDmg, splash:def.bossRocketSplash,
+          dead:false, trail:[], age:0,
+        });
         addFx(e.fx, e.fy, '#ff6010', 12);
+        playSound('incoming');
       }
     }
 
     if (pos.done) {
       e.dead=true; fobHP=Math.max(0,fobHP-e.damage);
       addFx(e.fx,e.fy,'#ff3010',22); updateHUD();
+      playSound('fobhit');
+      checkLastStand();
       if (fobHP<=0) { endGame(false); return; }
     }
 
@@ -1405,41 +2300,57 @@ function update() {
     if (gun.recoilTimer>0) gun.recoilTimer--;
     if (gun.flashTimer>0)  gun.flashTimer--;
     if (gun.reloadTimer>0) continue;
-    // Crew check — silent if no crew alive
     if (effectiveRof(gun) === Infinity) continue;
+
+    const isIndirect = gun.fireMode === 'indirect' && gunInFDCCoverage(gun);
+    // Indirect range is 2× direct range
+    const effectiveRange = isIndirect ? gun.rangePx * 2.0 : gun.rangePx;
+
     let best=null, bDist=Infinity;
     for (const e of enemies) {
       if (e.dead) continue;
       const d=Math.hypot((e.fx-gun.fx)*mapNatW,(e.fy-gun.fy)*mapNatH);
-      if (d<gun.rangePx&&d<bDist) { best=e; bDist=d; }
+      if (d>effectiveRange || d>=bDist) continue;
+      // Direct fire: skip enemies in defilade zone unless gun is close
+      if (!isIndirect && !canDirectFire(gun, e)) continue;
+      best=e; bDist=d;
     }
     if (!best) continue;
-    gun.angle=Math.atan2((best.fy-gun.fy)*mapNatH,(best.fx-gun.fx)*mapNatW);
-    gun.reloadTimer = effectiveRof(gun);
-    gun.flashTimer=FLASH_FRAMES;
+
+    // Indirect fire: apply CEP offset to aim point
+    let aimFx = best.fx, aimFy = best.fy;
+    if (isIndirect) {
+      const cep = getIndirectCEP(gun, best);
+      const diagPx = Math.hypot(mapNatW, mapNatH);
+      aimFx += (Math.random()-.5)*2*cep;
+      aimFy += (Math.random()-.5)*2*cep;
+    }
+
+    gun.angle = Math.atan2((aimFy-gun.fy)*mapNatH,(aimFx-gun.fx)*mapNatW);
+    // Indirect fire: 50% slower ROF
+    gun.reloadTimer = isIndirect ? Math.round(effectiveRof(gun) * 1.5) : effectiveRof(gun);
+    gun.flashTimer  = FLASH_FRAMES;
     addFx(gun.fx,gun.fy,gun.shell,7);
     const cos=Math.cos(gun.angle),sin=Math.sin(gun.angle);
     const def=GUN_DEFS[gun.gunKey];
+
     if (def.isRocket) {
-      // No recoil for rocket launchers — static firing platform
-      // Speed profile: cannon-speed for first 25% of distance, then ramp to 1.5× max
-      const distToTarget = Math.hypot((best.fx-gun.fx)*mapNatW,(best.fy-gun.fy)*mapNatH);
-      const boostDist    = distToTarget * 0.25;   // start accelerating after 25% distance
-      const baseSpd      = gun.projSpd;            // same as cannon shells initially
-      const maxSpd       = gun.projSpd * 1.5;      // cap at 50% faster than cannons
+      const distToTarget = Math.hypot((aimFx-gun.fx)*mapNatW,(aimFy-gun.fy)*mapNatH);
+      const boostDist    = distToTarget * 0.25;
+      const baseSpd      = gun.projSpd;
+      const maxSpd       = gun.projSpd * 1.5;
+      playSound('rocket');
       projectiles.push({
         fx:gun.fx, fy:gun.fy,
-        // store origin for distance tracking
         originFx:gun.fx, originFy:gun.fy,
         dfx:baseSpd*cos/mapNatW, dfy:baseSpd*sin/mapNatH,
-        boostDistNat: boostDist,      // nat-px threshold before accel begins
-        baseSpd, maxSpd,
+        boostDistNat: boostDist, baseSpd, maxSpd,
         accelDir:{cos,sin},
         damage:gun.damage, color:gun.shell,
         rocket:true, dead:false, trail:[],
         age:0, sourceGun:gun,
+        indirect:isIndirect, totalDist:distToTarget,
       });
-      // Back-blast particles
       for (let b=0;b<12;b++) {
         const spread=(Math.random()-0.5)*1.4;
         const bcos=Math.cos(gun.angle+Math.PI+spread);
@@ -1454,11 +2365,15 @@ function update() {
       }
     } else {
       gun.recoilTimer=RECOIL_FRAMES;
+      playSound('cannon');
+      const distToTarget = Math.hypot((aimFx-gun.fx)*mapNatW,(aimFy-gun.fy)*mapNatH);
       projectiles.push({
         fx:gun.fx, fy:gun.fy,
         dfx:gun.projSpd*cos/mapNatW, dfy:gun.projSpd*sin/mapNatH,
         damage:gun.damage, color:gun.shell,
         rocket:false, dead:false, trail:[], sourceGun:gun,
+        indirect:isIndirect, totalDist:distToTarget,
+        originFx:gun.fx, originFy:gun.fy,
       });
     }
   }
@@ -1500,8 +2415,8 @@ function update() {
         addFx(p.fx,p.fy,p.color,12);
         if (e.hp<=0) {
           e.dead=true; kills++; supply+=e.reward;
-          addFx(e.fx,e.fy,'#ffcc40',20); updateHUD();
-          // Credit kill to source gun for rank system
+          addFx(e.fx,e.fy,'#ffcc40',20); updateHUD(); flashSupply();
+          playSound('explosion');
           if (p.sourceGun) { p.sourceGun.gunKills++; checkRankUp(p.sourceGun); }
         }
         break;
@@ -1520,20 +2435,31 @@ function update() {
       const d=Math.hypot((g.fx-p.fx)*mapNatW,(g.fy-p.fy)*mapNatH);
       if (d<14) {
         p.dead=true;
-        g.hp=Math.max(0,g.hp-(p.dmg||1));
+        const rawDmg = Math.round(p.dmg||1);
+        let remainingDmg = rawDmg;
+
+        // Emplacement absorbs ALL damage first — gun takes nothing until fort is gone
+        if (g.fortHp > 0) {
+          const fortTaken = Math.min(g.fortHp, remainingDmg);
+          g.fortHp = Math.max(0, g.fortHp - fortTaken);
+          remainingDmg -= fortTaken;
+          if (g.fortHp <= 0 && g.digLevel > 0) {
+            destroyEmplacement(g);
+            g.digLevel = 0; // emplacement destroyed
+          }
+        }
+        if (remainingDmg > 0) g.hp = Math.max(0, g.hp - remainingDmg);
         addFx(p.fx,p.fy,'#ff8020',15);
 
-        // Crew casualty — 40% chance per hit on crewed weapons
-        if (g.crew && g.crew.length>0 && Math.random()<0.40) {
-          // Pick a random living crew member
+        // Crew casualty — base 40%, reduced by fortification + combat medics upgrade
+        const digCrewProt  = g.digLevel > 0 ? DIG_STAGES[g.digLevel-1].crewProt : 0;
+        const casualtyChance = 0.40 * (1-digCrewProt) * (activeUpgrades.includes('combat_medics') ? 0.5 : 1);
+        if (g.crew && g.crew.length>0 && Math.random()<casualtyChance) {
           const alive = g.crew.filter(c=>c.status!=='dead');
           if (alive.length>0) {
             const victim = alive[Math.floor(Math.random()*alive.length)];
-            if (victim.status==='ok') {
-              victim.status='wounded';   // first hit wounds
-            } else {
-              victim.status='dead';      // second hit to wounded = KIA
-            }
+            if (victim.status==='ok') { victim.status='wounded'; }
+            else { victim.status='dead'; }
           }
         }
 
@@ -1617,6 +2543,7 @@ function update() {
           });
         }
         addFx(crewFx, crewFy, '#ffe080', 4);
+        playSound('mg');
       }
     }
   }
@@ -1629,33 +2556,53 @@ function update() {
     if (r.dead) continue;
     r.trail.push({fx:r.fx,fy:r.fy}); if(r.trail.length>14)r.trail.shift();
     r.fx+=r.dfx; r.fy+=r.dfy; r.age++;
-    // Detonate when close to target point OR after max travel
     const dToTarget = Math.hypot((r.targetFx-r.fx)*mapNatW,(r.targetFy-r.fy)*mapNatH);
     if (dToTarget < 12 || r.age > 500) {
       r.dead=true;
-      // Massive splash — damage all guns in radius
+      playSound('explosion');
+      // Damage guns in splash radius — collect destroyed guns, splice after loop
+      const toDestroy = [];
       for (const gun of placedGuns) {
         const d = Math.hypot((gun.fx-r.fx)*mapNatW,(gun.fy-r.fy)*mapNatH);
         if (d < r.splash) {
-          const falloff = 1-(d/r.splash)*0.5;
-          gun.hp = Math.max(0, gun.hp - Math.round(r.dmg*falloff));
-          // Crew casualty from blast
-          if (gun.crew && Math.random()<0.6) {
-            const alive=gun.crew.filter(c=>c.status!=='dead');
+          const falloff  = Math.max(0.15, 1-(d/r.splash)*0.85);
+          const rawDmg   = Math.round(r.dmg * falloff);
+          let remDmg     = rawDmg;
+
+          // Emplacement absorbs ALL blast before gun takes damage
+          if (gun.fortHp > 0) {
+            const fortTaken = Math.min(gun.fortHp, remDmg);
+            gun.fortHp = Math.max(0, gun.fortHp - fortTaken);
+            remDmg -= fortTaken;
+            if (gun.fortHp <= 0 && gun.digLevel > 0) {
+              destroyEmplacement(gun);
+              gun.digLevel = 0;
+            }
+          }
+          if (remDmg > 0) gun.hp = Math.max(0, gun.hp - remDmg);
+
+          // Crew casualty only if emplacement already gone or minimal
+          const digCrewProt    = gun.digLevel > 0 ? DIG_STAGES[gun.digLevel-1].crewProt : 0;
+          const blastCrewChance = 0.60 * (1-digCrewProt);
+          if (gun.crew && Math.random()<blastCrewChance) {
+            const alive = gun.crew.filter(c=>c.status!=='dead');
             if (alive.length>0) {
-              const v=alive[Math.floor(Math.random()*alive.length)];
+              const v = alive[Math.floor(Math.random()*alive.length)];
               v.status = v.status==='ok' ? 'wounded' : 'dead';
             }
           }
-          if (gun.hp<=0) {
-            supply+=30;
-            const sIdx=placedGuns.indexOf(gun);
-            if (sIdx>-1) placedGuns.splice(sIdx,1);
-            const slot=gunSlots[gun.slotIdx];
-            if (slot){slot.occupied=false;slot.gun=null;}
-            addFx(gun.fx,gun.fy,'#ff4010',35);
-          }
+          if (gun.hp <= 0) toDestroy.push(gun);
         }
+      }
+      // Safe splice after iteration
+      for (const gun of toDestroy) {
+        if (gun.digLevel > 0) destroyEmplacement(gun);
+        supply += 30;
+        const sIdx = placedGuns.indexOf(gun);
+        if (sIdx > -1) placedGuns.splice(sIdx, 1);
+        const slot = gunSlots[gun.slotIdx];
+        if (slot) { slot.occupied=false; slot.gun=null; }
+        addFx(gun.fx, gun.fy, '#ff4010', 35);
       }
       // Explosion effects
       for (let i=0;i<12;i++) {
@@ -1672,12 +2619,17 @@ function update() {
   for (const ef of effects) ef.life--;
   effects = effects.filter(ef=>ef.life>0);
   updateFireMission();
+  updateFDCFOCounterfire();
+  // Clean dead FDC/FO from arrays
+  fdcUnits = fdcUnits.filter(u=>!u.dead);
+  foUnits  = foUnits.filter(u=>!u.dead);
 
   if (waveSpawnDone&&enemies.length===0) {
     waveActive=false; waveSpawnDone=false;
     // Supply reward — boosted by ammo_resupply upgrade
     const supplyBonus = Math.round((60+waveInGroup*15) * (activeUpgrades.includes('ammo_resupply')?1.25:1));
     supply += supplyBonus;
+    flashSupply();
     updateHUD();
 
     // Fire mission target landing
@@ -1706,6 +2658,10 @@ function handleGroupComplete() {
   const completed = groupNum;
   groupNum++;
   waveInGroup = 1;
+
+  // FOB gets reinforced each group — +1 max HP, heals 2
+  fobMaxHp = 6 + completed;
+  fobHP = Math.min(fobMaxHp, fobHP + 2);
 
   // Weapon unlock
   const unlock = GROUP_UNLOCKS[completed];
@@ -1785,6 +2741,381 @@ function pickUpgrade(key) {
 }
 
 // ── FIRE MISSION ──
+// ═══════════════════════════════════════════════════
+// FDC / FORWARD OBSERVER SYSTEM
+// ═══════════════════════════════════════════════════
+
+// ── DEFILADE HELPERS ──
+function enemyRouteIdx(enemy) {
+  // Returns the approximate PATH_FRACS index the enemy is near
+  let closest = 0, closestD = Infinity;
+  for (let i=0;i<PATH_FRACS.length;i++) {
+    const d = Math.hypot((enemy.fx-PATH_FRACS[i][0])*mapNatW,(enemy.fy-PATH_FRACS[i][1])*mapNatH);
+    if (d<closestD) { closestD=d; closest=i; }
+  }
+  return closest;
+}
+function isInDefilade(enemy) {
+  const idx = enemyRouteIdx(enemy);
+  return DEFILADE_ZONES.some(z => idx >= z.start && idx <= z.end);
+}
+function canDirectFire(gun, enemy) {
+  // Can always direct fire if enemy is close enough (line of sight at short range)
+  const diagPx  = Math.hypot(mapNatW, mapNatH);
+  const dist     = Math.hypot((gun.fx-enemy.fx)*mapNatW,(gun.fy-enemy.fy)*mapNatH);
+  if (dist < DEFILADE_CLOSE_DIST * diagPx) return true;
+  // Blocked if enemy is in defilade zone
+  return !isInDefilade(enemy);
+}
+function getDefiladeName(enemy) {
+  const idx = enemyRouteIdx(enemy);
+  const z = DEFILADE_ZONES.find(z => idx >= z.start && idx <= z.end);
+  return z ? z.name : null;
+}
+
+// ── FDC COVERAGE ──
+function gunInFDCCoverage(gun) {
+  const diagPx = Math.hypot(mapNatW, mapNatH);
+  return fdcUnits.some(fdc => !fdc.dead &&
+    Math.hypot((fdc.fx-gun.fx)*mapNatW,(fdc.fy-gun.fy)*mapNatH) < FDC_RADIUS*diagPx);
+}
+function enemySpotted(enemy) {
+  const diagPx = Math.hypot(mapNatW, mapNatH);
+  return foUnits.some(fo => !fo.dead &&
+    Math.hypot((fo.fx-enemy.fx)*mapNatW,(fo.fy-enemy.fy)*mapNatH) < FO_SPOT_RADIUS*diagPx);
+}
+function getIndirectCEP(gun, targetEnemy) {
+  // CEP as fraction of map diagonal
+  // With FO spotting the target: tight accuracy; without: wide area fire
+  const hasFO = enemySpotted(targetEnemy);
+  return hasFO ? 0.020 : 0.110;
+}
+
+// ── PLACEMENT MODE ──
+function activatePlacement(type) {
+  if (placingMode === type) {
+    cancelPlacement();
+    return;
+  }
+  placingMode = type;
+  closeMenu();
+  document.getElementById('mb-place-fdc').classList.toggle('placing', type==='fdc');
+  document.getElementById('mb-place-fo').classList.toggle('placing', type==='fo');
+  document.body.classList.toggle('placing-fdc', type==='fdc');
+  document.body.classList.toggle('placing-fo',  type==='fo');
+  // Show hint
+  const hint = document.getElementById('fire-mission-hint');
+  hint.textContent = type==='fdc' ? '📡 HOLD ON MAP TO PLACE FDC' : '👁 HOLD ON MAP TO PLACE OBSERVER';
+  hint.style.display = 'block';
+}
+function cancelPlacement() {
+  placingMode = null;
+  clearTimeout(holdTimer); holdTimer=null; holdStartPos=null; holdStartTime=0;
+  document.getElementById('mb-place-fdc').classList.remove('placing');
+  document.getElementById('mb-place-fo').classList.remove('placing');
+  document.body.classList.remove('placing-fdc','placing-fo');
+  document.getElementById('fire-mission-hint').style.display='none';
+}
+function executePlacement(sx, sy) {
+  if (!placingMode) return;
+  if (sy < HUD_H) { cancelPlacement(); return; }
+  const [fx,fy] = scrToMf(sx,sy);
+  const type     = placingMode;
+  const cost     = type==='fdc' ? FDC_COST : FO_COST;
+  if (supply < cost) {
+    showCoordToast(fx, fy);  // reuse toast for "insufficient supply" feedback
+    document.getElementById('coord-toast').textContent = `INSUFFICIENT SUPPLY — NEED $${cost}`;
+    cancelPlacement(); return;
+  }
+  supply -= cost;
+  const unit = {
+    type, fx, fy,
+    hp: type==='fdc' ? FDC_HP : FO_HP,
+    maxHp: type==='fdc' ? FDC_HP : FO_HP,
+    concealed: false,
+    dead: false,
+    pingPhase: Math.random()*Math.PI*2,  // stagger ring animations
+    id: Math.random(),
+  };
+  if (type==='fdc') fdcUnits.push(unit);
+  else              foUnits.push(unit);
+  updateHUD();
+  cancelPlacement();
+  // Placement dust puff
+  for (let i=0;i<6;i++) effects.push({
+    fx:fx+(Math.random()-.5)*.012, fy:fy+(Math.random()-.5)*.012,
+    color:'#8a6030', life:22, maxLife:22,
+  });
+  playSound('tap');
+}
+
+// ── FDC / FO INFO PANEL ──
+function openUnitInfo(type, unit) {
+  selectedUnit = { type, unit };
+  const nameEl = document.getElementById('unit-info-name');
+  nameEl.textContent = type==='fdc' ? '📡 FIRE DIRECTION CENTER' : '👁 FORWARD OBSERVER';
+  // HP pips
+  const hpRow = document.getElementById('unit-hp-row');
+  hpRow.innerHTML = '<span class="unit-hp-label">HP</span>';
+  for (let i=0;i<unit.maxHp;i++) {
+    const pip=document.createElement('div');
+    pip.className='hp-pip '+(i<unit.hp?'full':'empty');
+    hpRow.appendChild(pip);
+  }
+  // Conceal button
+  const concealCost = type==='fdc' ? FDC_CONCEAL : FO_CONCEAL;
+  const cBtn = document.getElementById('btn-conceal');
+  if (unit.concealed) {
+    cBtn.textContent='🌿 CONCEALED — ACTIVE';
+    cBtn.classList.add('active');
+  } else {
+    cBtn.textContent=`🌿 CONCEAL — $${concealCost}`;
+    cBtn.classList.remove('active');
+    cBtn.style.opacity = supply >= concealCost ? '1' : '0.4';
+  }
+  document.getElementById('unit-info').classList.add('open');
+}
+function closeUnitInfo() {
+  document.getElementById('unit-info').classList.remove('open');
+  selectedUnit=null;
+}
+function toggleConceal() {
+  if (!selectedUnit) return;
+  const { type, unit } = selectedUnit;
+  if (unit.concealed) return; // can't un-conceal
+  const cost = type==='fdc' ? FDC_CONCEAL : FO_CONCEAL;
+  if (supply < cost) return;
+  supply -= cost;
+  unit.concealed = true;
+  updateHUD();
+  openUnitInfo(type, unit); // refresh panel
+  playSound('tap');
+}
+function removeUnit() {
+  if (!selectedUnit) return;
+  const { type, unit } = selectedUnit;
+  if (type==='fdc') fdcUnits = fdcUnits.filter(u=>u!==unit);
+  else              foUnits  = foUnits.filter(u=>u!==unit);
+  // Partial refund — no refund (you chose to remove)
+  closeUnitInfo();
+  updateHUD();
+}
+
+// ── FIRE MODE (per-gun) ──
+function setFireMode(mode) {
+  if (selectedGunSlotIdx===null) return;
+  const gun = gunSlots[selectedGunSlotIdx]?.gun;
+  if (!gun) return;
+  if (mode==='indirect' && !gunInFDCCoverage(gun)) return; // no FDC, can't indirect
+  gun.fireMode = mode;
+  // Update toggle buttons
+  document.getElementById('fmode-direct').className   = 'fmode-btn' + (mode==='direct'  ?' active':'');
+  document.getElementById('fmode-indirect').className = 'fmode-btn' + (mode==='indirect'?' indirect-active':'');
+  playSound('tap');
+}
+
+// ─────────────────────────────────────────────────
+// DRAW FDC UNITS
+// ─────────────────────────────────────────────────
+function drawFDCUnits() {
+  const diagPx = Math.hypot(mapNatW, mapNatH);
+  const frame  = performance.now() * 0.001; // seconds
+
+  for (const fdc of fdcUnits) {
+    if (fdc.dead) continue;
+    const [x,y] = np(fdc.fx, fdc.fy);
+    const covR   = FDC_RADIUS * diagPx;
+
+    // ── Coverage radius — very subtle, pulsing concentric rings ──
+    for (let ring=0; ring<3; ring++) {
+      // Each ring expands outward and fades
+      const phase  = ((frame * 0.35 + ring * 0.33) % 1);
+      const r      = covR * (0.2 + phase * 0.8);
+      const alpha  = (1-phase) * (fdc.concealed ? 0.06 : 0.12);
+      ctx.strokeStyle = `rgba(180,130,40,${alpha})`;
+      ctx.lineWidth   = lw(1.5);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke();
+    }
+
+    // ── Outer coverage boundary (always faint) ──
+    ctx.strokeStyle = fdc.concealed ? 'rgba(80,60,20,.08)' : 'rgba(180,130,40,.14)';
+    ctx.lineWidth   = lw(1); ctx.setLineDash([lw(4),lw(6)]);
+    ctx.beginPath(); ctx.arc(x, y, covR, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // ── FDC map icon ──
+    const sz = Math.max(8, 20/camZ);
+    const img = images['fdc_map'];
+    if (img) {
+      ctx.save();
+      ctx.globalAlpha = fdc.concealed ? 0.45 : 0.90;
+      ctx.drawImage(img, x-sz, y-sz*1.2, sz*2, sz*2.4);
+      ctx.globalAlpha=1; ctx.restore();
+    } else {
+      ctx.fillStyle = fdc.concealed ? 'rgba(120,100,40,.5)' : 'rgba(200,160,50,.9)';
+      ctx.beginPath(); ctx.arc(x,y,Math.max(3,6/camZ),0,Math.PI*2); ctx.fill();
+    }
+
+    // ── Concealment netting overlay ──
+    if (fdc.concealed) drawConcealmentNetting(x, y, sz);
+
+    // ── HP pips (show when zoomed in) ──
+    if (camZ > 1.5) {
+      const pr = Math.max(1.2,rs(3));
+      for (let i=0;i<fdc.maxHp;i++) {
+        ctx.fillStyle = i<fdc.hp ? '#7a5a10' : '#2a1810';
+        ctx.beginPath(); ctx.arc(x - pr*(fdc.maxHp-1) + i*pr*2.2, y+sz+rs(4), pr, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle='rgba(180,130,40,.7)'; ctx.font=`bold ${Math.max(5,rs(8))}px Courier New`;
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText('FDC', x, y+sz+rs(9));
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────
+// DRAW FO UNITS
+// ─────────────────────────────────────────────────
+function drawFOUnits() {
+  const diagPx = Math.hypot(mapNatW, mapNatH);
+  for (const fo of foUnits) {
+    if (fo.dead) continue;
+    const [x,y] = np(fo.fx, fo.fy);
+    const spotR  = FO_SPOT_RADIUS * diagPx;
+
+    // ── Spotting zone arc — subtle filled sector toward route ──
+    // Find nearest route point to orient the arc
+    let nearestRPt = PATH_FRACS[0], nearestD = Infinity;
+    for (const pt of PATH_FRACS) {
+      const d=Math.hypot((pt[0]-fo.fx)*mapNatW,(pt[1]-fo.fy)*mapNatH);
+      if (d<nearestD) { nearestD=d; nearestRPt=pt; }
+    }
+    const aimAng = Math.atan2((nearestRPt[1]-fo.fy)*mapNatH,(nearestRPt[0]-fo.fx)*mapNatW);
+    const spread = Math.PI * 0.55; // ±55° arc
+    ctx.fillStyle = fo.concealed ? 'rgba(60,100,40,.06)' : 'rgba(60,120,60,.10)';
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.arc(x, y, spotR, aimAng-spread, aimAng+spread);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = fo.concealed ? 'rgba(60,100,40,.10)' : 'rgba(70,140,70,.22)';
+    ctx.lineWidth=lw(1); ctx.setLineDash([lw(3),lw(5)]);
+    ctx.beginPath();
+    ctx.arc(x, y, spotR, aimAng-spread, aimAng+spread);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // ── FO map icon ──
+    const sz = Math.max(6, 16/camZ);
+    const img = images['fo_map'];
+    if (img) {
+      ctx.save(); ctx.globalAlpha = fo.concealed ? 0.40 : 0.88;
+      ctx.drawImage(img, x-sz, y-sz*1.2, sz*2, sz*2.4);
+      ctx.globalAlpha=1; ctx.restore();
+    } else {
+      ctx.fillStyle = fo.concealed ? 'rgba(60,100,40,.5)' : 'rgba(80,160,80,.9)';
+      ctx.beginPath(); ctx.arc(x,y,Math.max(2.5,5/camZ),0,Math.PI*2); ctx.fill();
+    }
+
+    // ── Concealment netting ──
+    if (fo.concealed) drawConcealmentNetting(x, y, sz);
+
+    if (camZ > 1.5) {
+      const pr=Math.max(1.2,rs(3));
+      for (let i=0;i<fo.maxHp;i++) {
+        ctx.fillStyle = i<fo.hp ? '#2a5010' : '#1a1208';
+        ctx.beginPath(); ctx.arc(x-pr*(fo.maxHp-1)+i*pr*2.2, y+sz+rs(4), pr, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle='rgba(70,140,70,.7)'; ctx.font=`bold ${Math.max(5,rs(8))}px Courier New`;
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText('OBS', x, y+sz+rs(9));
+    }
+  }
+}
+
+// ── CONCEALMENT FOLIAGE ──
+function drawConcealmentNetting(x, y, sz) {
+  const img = images['fort_camo'];
+  if (img) {
+    // Fixed screen size (~44px) regardless of zoom — always readable
+    const netSz = 22 / camZ;
+    ctx.save();
+    ctx.globalAlpha = 0.50;  // semi-transparent — unit visible underneath
+    ctx.drawImage(img, x - netSz, y - netSz, netSz * 2, netSz * 2);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+// ── HOLD PROGRESS DRAW (called from render) ──
+function drawHoldIndicator() {
+  if (!holdStartPos || !placingMode) return;
+  const elapsed = (performance.now() - holdStartTime) / HOLD_MS;
+  const progress = Math.min(1, elapsed);
+  const {sx,sy} = holdStartPos;
+  const r = 28;
+  // Background ring
+  ctx.strokeStyle='rgba(180,130,40,.25)';
+  ctx.lineWidth=lw(3); ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(...scrToNat(sx,sy), r/camZ, 0, Math.PI*2); ctx.stroke();
+  // Progress arc
+  ctx.strokeStyle=`rgba(210,160,50,${.6+progress*.3})`;
+  ctx.lineWidth=lw(3);
+  ctx.beginPath();
+  ctx.arc(...scrToNat(sx,sy), r/camZ, -Math.PI/2, -Math.PI/2 + Math.PI*2*progress);
+  ctx.stroke();
+}
+function scrToNat(sx,sy) {
+  const offX=W/2-camFx*mapNatW*camZ, offY=HUD_H+(H-HUD_H)/2-camFy*mapNatH*camZ;
+  return [(sx-offX)/camZ, (sy-offY)/camZ];
+}
+
+// ── FDC/FO COUNTERFIRE by enemies ──
+function updateFDCFOCounterfire() {
+  const diagPx = Math.hypot(mapNatW, mapNatH);
+  const allUnits = [
+    ...fdcUnits.filter(u=>!u.dead).map(u=>({u,type:'fdc'})),
+    ...foUnits.filter(u=>!u.dead).map(u=>({u,type:'fo'})),
+  ];
+  for (const e of enemies) {
+    if (e.dead || !e.counterfire) continue;
+    e.cfUnitCooldown = (e.cfUnitCooldown||0) - 1;
+    if (e.cfUnitCooldown > 0) continue;
+    // Find nearest visible (non-concealed) FDC/FO in range
+    const range = 0.30 * diagPx;
+    let target=null, tDist=Infinity;
+    for (const {u} of allUnits) {
+      if (u.concealed) continue; // concealed = cannot be targeted
+      const d=Math.hypot((u.fx-e.fx)*mapNatW,(u.fy-e.fy)*mapNatH);
+      if (d<range && d<tDist) { target=u; tDist=d; }
+    }
+    if (!target) continue;
+    e.cfUnitCooldown = 360 + Math.floor(Math.random()*120);
+    const ang=Math.atan2((target.fy-e.fy)*mapNatH,(target.fx-e.fx)*mapNatW);
+    cfShots.push({
+      fx:e.fx, fy:e.fy,
+      dfx:2.2*Math.cos(ang)/mapNatW, dfy:2.2*Math.sin(ang)/mapNatH,
+      targetUnit:target, dead:false, trail:[], dmg:1,
+    });
+  }
+  // Move cfShots that target FDC/FO units (handled separately in update)
+  for (const p of cfShots) {
+    if (!p.targetUnit || p.dead) continue;
+    const u=p.targetUnit;
+    const d=Math.hypot((u.fx-p.fx)*mapNatW,(u.fy-p.fy)*mapNatH);
+    if (d<14) {
+      p.dead=true;
+      if (!u.concealed) {
+        u.hp=Math.max(0,u.hp-p.dmg);
+        addFx(p.fx,p.fy,'#ff8020',10);
+        if (u.hp<=0) {
+          u.dead=true;
+          addFx(u.fx,u.fy,'#ff4010',28);
+          playSound('explosion');
+        }
+      }
+    }
+  }
+}
+
 function toggleRouteEdit() {
   routeEditMode = !routeEditMode;
   document.getElementById('btn-route-edit').classList.toggle('active', routeEditMode);
@@ -1801,6 +3132,83 @@ function showCoordToast(fx, fy) {
   try { navigator.clipboard.writeText(`[${fx.toFixed(3)}, ${fy.toFixed(3)}]`); } catch(e){}
 }
 
+// ═══════════════════════════════════════════════════
+// SPLASH SCREEN
+// ═══════════════════════════════════════════════════
+function dismissSplash() {
+  const splash = document.getElementById('splash');
+  splash.classList.add('fade-out');
+  setTimeout(()=>{ splash.style.display='none'; }, 850);
+  _resumeAC();
+}
+document.getElementById('splash').addEventListener('pointerup', dismissSplash);
+function dismissTutorial() {
+  document.getElementById('tutorial').style.display='none';
+  try { localStorage.setItem('fb_seen','1'); } catch(e){}
+}
+function checkTutorial() {
+  try { if (localStorage.getItem('fb_seen')) { document.getElementById('tutorial').style.display='none'; } }
+  catch(e) { document.getElementById('tutorial').style.display='none'; }
+}
+
+// ═══════════════════════════════════════════════════
+// PAUSE
+// ═══════════════════════════════════════════════════
+function togglePause() {
+  if (gameOver) return;
+  gamePaused = !gamePaused;
+  document.getElementById('pause-screen').classList.toggle('active', gamePaused);
+  
+  
+}
+// Tap pause screen to resume
+document.getElementById('pause-screen').addEventListener('pointerup', ()=>{ if(gamePaused) togglePause(); });
+
+// ═══════════════════════════════════════════════════
+// SPEED CONTROL
+// ═══════════════════════════════════════════════════
+function cycleSpeed() {
+  gameSpeed = gameSpeed >= 3 ? 1 : gameSpeed + 1;
+  const btn = document.getElementById('btn-speed');
+  btn.textContent = gameSpeed === 1 ? '1×' : gameSpeed === 2 ? '2×' : '3×';
+  btn.className   = gameSpeed === 1 ? '' : gameSpeed === 2 ? 'fast' : 'faster';
+}
+
+// ═══════════════════════════════════════════════════
+// SUPPLY FLASH ANIMATION
+// ═══════════════════════════════════════════════════
+function flashSupply() {
+  const el = document.getElementById('hud-supply');
+  el.classList.remove('supply-gain');
+  void el.offsetWidth; // reflow to restart animation
+  el.classList.add('supply-gain');
+}
+
+// ═══════════════════════════════════════════════════
+// LAST STAND
+// ═══════════════════════════════════════════════════
+function checkLastStand() {
+  const isLastStand = fobHP <= 1 && !gameOver;
+  if (isLastStand !== lastStand) {
+    lastStand = isLastStand;
+    document.getElementById('last-stand-banner').classList.toggle('active', lastStand);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// PASSIVE INCOME (between waves only)
+// ═══════════════════════════════════════════════════
+function tickPassiveIncome() {
+  if (waveActive || gameOver || gamePaused) return;
+  passiveIncomeTick++;
+  if (passiveIncomeTick >= PASSIVE_INCOME_FRAMES) {
+    passiveIncomeTick = 0;
+    supply += PASSIVE_INCOME_AMT;
+    flashSupply();
+    updateHUD();
+  }
+}
+
 function toggleFireMission() {
   if (fireMissionTokens <= 0) return;
   fireMissionArmed = !fireMissionArmed;
@@ -1810,12 +3218,7 @@ function toggleFireMission() {
 }
 
 function updateFireMissionBtn() {
-  const btn = document.getElementById('btn-fire-mission');
-  if (!btn) return;
-  btn.textContent    = `☢ FIRE MISSION (${fireMissionTokens})`;
-  btn.style.opacity  = fireMissionTokens > 0 ? '1' : '0.35';
-  btn.style.pointerEvents = fireMissionTokens > 0 ? 'auto' : 'none';
-  btn.classList.toggle('active', fireMissionArmed);
+  updateMenuStates();
 }
 
 function launchFireMission(fx, fy) {
@@ -1915,6 +3318,9 @@ function render() {
   drawPath();
   drawGunSlots();
   if (showRanges) drawRangeRings();
+  drawFortifications();
+  drawFDCUnits();
+  drawFOUnits();
   drawPlacedGuns();
   drawCrew();
   drawCFShots();
@@ -1927,9 +3333,16 @@ function render() {
   drawSpawnMarker();
   drawFireMission();
   if (routeEditMode) drawRouteEditor();
+  drawHoldIndicator();
 
   ctx.restore();
-  requestAnimationFrame(()=>{ update(); render(); });
+  tickPassiveIncome();
+  requestAnimationFrame(()=>{
+    if (!gamePaused) {
+      for (let s=0; s<gameSpeed; s++) update();
+    }
+    render();
+  });
 }
 
 // nat-px helpers
@@ -1978,20 +3391,48 @@ function drawPath() {
 
 // ─── GUN SLOTS ───
 function drawGunSlots() {
-  const r=Math.max(5,rs(14));
+  // Fixed screen-space size — scales with devicePixelRatio awareness
+  const screenR = 18;
+  const natR    = screenR / camZ;
+
   for (const s of gunSlots) {
     if (s.occupied) continue;
-    const[x,y]=np(s.fx,s.fy);
-    ctx.fillStyle='rgba(8,12,4,.68)';
-    ctx.beginPath();ctx.arc(x,y,r*1.9,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle=waveActive?'rgba(55,70,28,.5)':'rgba(130,195,55,.88)';
-    ctx.lineWidth=lw(1.8);
-    ctx.setLineDash([lw(3.5),lw(4)]);
-    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();
-    ctx.setLineDash([]);
-    if (!waveActive) {
-      ctx.fillStyle='rgba(150,225,65,.72)';
-      ctx.beginPath();ctx.arc(x,y,Math.max(1.5,rs(4.5)),0,Math.PI*2);ctx.fill();
+    const [x, y] = np(s.fx, s.fy);
+
+    if (waveActive) {
+      // Wave active: subtle dot only
+      ctx.fillStyle = 'rgba(160,100,40,.35)';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(1.5, 3.5/camZ), 0, Math.PI*2); ctx.fill();
+    } else {
+      // Dark backing ring
+      ctx.strokeStyle = 'rgba(0,0,0,.50)';
+      ctx.lineWidth   = Math.max(1.5, 4/camZ);
+      ctx.beginPath(); ctx.arc(x, y, natR, 0, Math.PI*2); ctx.stroke();
+
+      // Amber/brown dashed ring
+      ctx.strokeStyle = 'rgba(180,120,50,.90)';
+      ctx.lineWidth   = Math.max(0.8, 2/camZ);
+      ctx.setLineDash([Math.max(1.5, 4/camZ), Math.max(1.5, 4/camZ)]);
+      ctx.beginPath(); ctx.arc(x, y, natR, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 4 tick marks
+      ctx.strokeStyle = 'rgba(180,120,50,.85)';
+      ctx.lineWidth   = Math.max(0.8, 1.8/camZ);
+      ctx.lineCap     = 'round';
+      for (let a = 0; a < Math.PI*2; a += Math.PI/2) {
+        const cos = Math.cos(a), sin = Math.sin(a);
+        ctx.beginPath();
+        ctx.moveTo(x + cos*(natR*1.25), y + sin*(natR*1.25));
+        ctx.lineTo(x + cos*(natR*1.75), y + sin*(natR*1.75));
+        ctx.stroke();
+      }
+
+      // Center dot
+      ctx.fillStyle = 'rgba(0,0,0,.5)';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(1.5, 4/camZ), 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(200,140,60,.95)';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(1, 2.5/camZ), 0, Math.PI*2); ctx.fill();
     }
   }
 }
@@ -2034,6 +3475,186 @@ function drawRangeRings() {
     ctx.moveTo(tx - Math.sin(gun.angle) * tickLen, ty + Math.cos(gun.angle) * tickLen);
     ctx.lineTo(tx + Math.sin(gun.angle) * tickLen, ty - Math.cos(gun.angle) * tickLen);
     ctx.stroke();
+  }
+}
+
+// ─── FORTIFICATIONS ───
+// Emplacements drawn from PNG assets, static orientation facing enemy road.
+// Damage state overlaid procedurally based on HP %. Camo netting on top.
+
+// Seeded pseudo-random for consistent damage marks per gun
+function seededRand(seed, idx) {
+  const x = Math.sin(seed * 9301 + idx * 4999 + 1) * 93188;
+  return x - Math.floor(x);
+}
+
+function destroyEmplacement(gun) {
+  // Smoke burst — layered particles
+  for (let i = 0; i < 20; i++) {
+    const ang  = Math.random() * Math.PI * 2;
+    const dist = Math.random() * gun.iconSz * 1.2 / mapNatW;
+    effects.push({
+      fx: gun.fx + Math.cos(ang) * dist,
+      fy: gun.fy + Math.sin(ang) * dist,
+      color: i < 8 ? '#1a1410' : i < 14 ? '#4a3820' : '#c08030',
+      life: 40 + Math.floor(Math.random() * 30),
+      maxLife: 70,
+    });
+  }
+  // Lingering smoke columns
+  for (let i = 0; i < 6; i++) {
+    const ang  = Math.random() * Math.PI * 2;
+    const dist = Math.random() * gun.iconSz * 0.6 / mapNatW;
+    effects.push({
+      fx: gun.fx + Math.cos(ang) * dist,
+      fy: gun.fy + Math.sin(ang) * dist,
+      color: '#2a2218',
+      life: 80 + Math.floor(Math.random() * 40),
+      maxLife: 120,
+    });
+  }
+}
+
+function drawFortifications() {
+  for (const gun of placedGuns) {
+    if (!gun.digLevel && !gun.isDigging) continue;
+
+    const [x, y] = np(gun.fx, gun.fy);
+    const sz     = gun.iconSz;
+
+    // ── Image key for completed levels ──
+    const imgKeys = ['fort_scrape', 'fort_sandbag', 'fort_harden'];
+
+    // ── Orientation: static fortAngle (toward enemy road) ──
+    // If not yet set (shouldn't happen but safety), use gun angle
+    const fAngle = gun.fortAngle !== null ? gun.fortAngle : gun.angle;
+
+    // ── Draw size — tightly wraps the gun icon ──
+    const drawSz = sz * 0.72;  // half-width in nat-px, keeps ring close to gun
+
+    // ── Damage state based on EMPLACEMENT HP, not gun HP ──
+    // hpFrac=1 pristine, hpFrac=0 destroyed
+    const hpFrac = gun.fortMaxHp > 0 ? gun.fortHp / gun.fortMaxHp : 1;
+    const seed   = gun.id || 0;
+
+    // ── Draw each completed fortification level ──
+    for (let lvl = 0; lvl < gun.digLevel; lvl++) {
+      const img = images[imgKeys[lvl]];
+      if (!img) continue;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(fAngle + Math.PI / 2); // +PI/2 so "top" of image (opening) faces rear
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(img, -drawSz, -drawSz, drawSz * 2, drawSz * 2);
+      ctx.globalAlpha = 1;
+
+      // ── Damage overlays — drawn in emplacement local space ──
+      if (hpFrac < 0.75) {
+        const dmgLevel = hpFrac < 0.25 ? 3 : hpFrac < 0.50 ? 2 : 1;
+
+        // Scorch marks — dark irregular circles
+        const scorchCount = dmgLevel * 4;
+        for (let i = 0; i < scorchCount; i++) {
+          const ang = seededRand(seed, i * 7 + lvl * 31) * Math.PI * 2;
+          const r   = seededRand(seed, i * 7 + lvl * 31 + 1) * drawSz * 0.85;
+          const br  = Math.max(1, drawSz * (0.06 + seededRand(seed, i*7+2) * 0.10) / camZ);
+          ctx.fillStyle = `rgba(10,8,4,${0.25 + dmgLevel * 0.12})`;
+          ctx.beginPath();
+          ctx.arc(Math.cos(ang)*r, Math.sin(ang)*r, br, 0, Math.PI*2);
+          ctx.fill();
+        }
+
+        // Crack lines — thin dark jagged strokes
+        const crackCount = dmgLevel * 2;
+        ctx.strokeStyle = `rgba(6,4,2,${0.30 + dmgLevel * 0.12})`;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(0.4, 0.8 / camZ);
+        for (let i = 0; i < crackCount; i++) {
+          const startAng = seededRand(seed, i * 13 + lvl * 17) * Math.PI * 2;
+          const startR   = seededRand(seed, i * 13 + lvl * 17 + 1) * drawSz * 0.5;
+          const sx2      = Math.cos(startAng) * startR;
+          const sy2      = Math.sin(startAng) * startR;
+          ctx.beginPath();
+          ctx.moveTo(sx2, sy2);
+          // 3 jagged segments
+          let cx2 = sx2, cy2 = sy2;
+          for (let seg = 0; seg < 3; seg++) {
+            const segAng = startAng + (seededRand(seed, i*13+seg+3) - 0.5) * 1.2;
+            const segLen = drawSz * (0.10 + seededRand(seed, i*13+seg+6) * 0.14);
+            cx2 += Math.cos(segAng) * segLen;
+            cy2 += Math.sin(segAng) * segLen;
+            ctx.lineTo(cx2, cy2);
+          }
+          ctx.stroke();
+        }
+
+        // Heavy damage: pulsing red glow at damage points
+        if (dmgLevel >= 3) {
+          const glowPulse = 0.4 + 0.25 * Math.sin(performance.now() * 0.004);
+          for (let i = 0; i < 3; i++) {
+            const ang = seededRand(seed, i * 19 + lvl * 23) * Math.PI * 2;
+            const r   = seededRand(seed, i * 19 + lvl * 23 + 1) * drawSz * 0.7;
+            const br  = Math.max(2, drawSz * 0.12 / camZ);
+            const grad = ctx.createRadialGradient(
+              Math.cos(ang)*r, Math.sin(ang)*r, 0,
+              Math.cos(ang)*r, Math.sin(ang)*r, br
+            );
+            grad.addColorStop(0, `rgba(255,80,10,${glowPulse * 0.55})`);
+            grad.addColorStop(1, 'rgba(255,40,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(Math.cos(ang)*r, Math.sin(ang)*r, br, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // ── Camouflage netting overlay (on top of all fortification levels) ──
+    if (gun.camouflaged && gun.digLevel > 0) {
+      const camoImg = images['fort_camo'];
+      if (camoImg) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(fAngle + Math.PI / 2);
+        ctx.globalAlpha = 0.52;  // semi-transparent — can see gun underneath
+        ctx.drawImage(camoImg, -drawSz * 1.08, -drawSz * 1.08, drawSz * 2.16, drawSz * 2.16);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+    }
+
+    // ── Construction in-progress: fade-in of next level ──
+    if (gun.isDigging && gun.digLevel < imgKeys.length) {
+      const progress = 1 - gun.digTimer / DIG_STAGES[gun.digLevel].frames;
+      const nextImg  = images[imgKeys[gun.digLevel]];
+      if (nextImg) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(fAngle + Math.PI / 2);
+        ctx.globalAlpha = progress * 0.6;
+        ctx.drawImage(nextImg, -drawSz, -drawSz, drawSz * 2, drawSz * 2);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Construction progress arc
+      const sweepR  = drawSz * (1.12 + gun.digLevel * 0.14);
+      ctx.strokeStyle = 'rgba(200,160,60,0.70)';
+      ctx.lineWidth   = lw(2); ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y, sweepR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+      if (camZ > 1.2) {
+        ctx.fillStyle = 'rgba(200,160,60,0.85)';
+        ctx.font = `bold ${Math.max(5, rs(9))}px Courier New`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(`⛏ ${Math.ceil(gun.digTimer / 60)}s`, x, y - sweepR - rs(12));
+      }
+    }
   }
 }
 
@@ -2120,6 +3741,19 @@ function drawPlacedGuns() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(rank.abbr, baseX, pipY + pipR * 2 + rs(2));
+    }
+
+    // ── FORTIFICATION ICON ── (shown above gun when dug in)
+    if (gun.digLevel > 0 || gun.isDigging) {
+      const digIcons = ['·','▪','■'];  // scraped, sandbag, hardened
+      const icon = gun.isDigging ? '⛏' : digIcons[gun.digLevel - 1];
+      const digColor = gun.digLevel >= 3 ? '#7a7060' : gun.digLevel >= 2 ? '#8a7040' : '#6a5030';
+      const fs2 = Math.max(5, rs(8));
+      ctx.fillStyle = gun.isDigging ? 'rgba(200,160,60,0.7)' : digColor;
+      ctx.font = `${fs2}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(icon, baseX, baseY - sz * 0.7 - rs(2));
     }
   }
 }
@@ -2407,7 +4041,37 @@ function drawProjectiles() {
         ctx.beginPath(); ctx.arc(tx, ty, lw(p.isMG ? 1 : 2), 0, Math.PI*2); ctx.fill();
       }
       ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(px, py, lw(p.isMG ? 1.5 : 3), 0, Math.PI*2); ctx.fill();
+      // Indirect cannon shells arc upward — scale the dot up as it rises and back down
+      if (p.indirect && p.totalDist > 0) {
+        const travelled = Math.hypot((p.fx-p.originFx)*mapNatW,(p.fy-p.originFy)*mapNatH);
+        const prog      = Math.min(1, travelled / p.totalDist);
+        const arcScale  = 1 + Math.sin(prog*Math.PI) * 2.5; // peak at 3.5× size
+        const arcAlpha  = 0.5 + Math.sin(prog*Math.PI) * 0.5;
+        // Shadow on ground
+        ctx.globalAlpha = 0.25 * arcAlpha;
+        ctx.fillStyle='rgba(0,0,0,.6)';
+        ctx.beginPath(); ctx.ellipse(px, py, lw(3*arcScale), lw(1.5), 0, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha=1;
+        // Actual shell (drawn offset upward to simulate height)
+        const heightOffset = Math.sin(prog*Math.PI) * Math.min(mapNatW,mapNatH) * 0.08 / camZ;
+        ctx.fillStyle='rgba(255,240,180,0.9)';
+        ctx.beginPath(); ctx.arc(px, py - heightOffset, lw(2.2*arcScale*0.7), 0, Math.PI*2); ctx.fill();
+        // Arc trail — draw a curved line showing the trajectory
+        if (p.trail.length > 2) {
+          ctx.strokeStyle='rgba(255,220,120,0.15)';
+          ctx.lineWidth=lw(1.5); ctx.lineCap='round';
+          ctx.beginPath();
+          for (let i=0;i<p.trail.length;i++) {
+            const tp = Math.min(1, (i/p.trail.length)*prog);
+            const tOff = Math.sin(tp*Math.PI)*Math.min(mapNatW,mapNatH)*0.08/camZ;
+            const [tx2,ty2]=np(p.trail[i].fx,p.trail[i].fy);
+            i===0?ctx.moveTo(tx2,ty2-tOff):ctx.lineTo(tx2,ty2-tOff);
+          }
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath(); ctx.arc(px, py, lw(p.isMG ? 1.5 : 3), 0, Math.PI*2); ctx.fill();
+      }
     }
   }
 }
@@ -2423,6 +4087,14 @@ function drawEnemies() {
     const flash=e.hitFlash>0;
 
     ctx.save();ctx.translate(x,y);ctx.rotate(e.angle + Math.PI/2);
+    // Spotted indicator (FO has eyes on this enemy)
+    if (enemySpotted(e)) {
+      ctx.strokeStyle='rgba(60,200,80,.55)';
+      ctx.lineWidth=Math.max(0.6,1.2/camZ);
+      ctx.setLineDash([Math.max(1,2/camZ),Math.max(1,3/camZ)]);
+      ctx.beginPath(); ctx.arc(0,0,sz*1.35,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if (img) {
       const ar = img.naturalWidth / img.naturalHeight;
       const drawH = sz * 2;
@@ -2554,9 +4226,9 @@ function drawFOBMarker() {
   ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.fillText('FOB ALPHA',x,y-ph*.1);
   const pr=rs(3.5);
-  for(let i=0;i<6;i++){
+  for(let i=0;i<fobMaxHp;i++){
     ctx.fillStyle=i<fobHP?'#5a9020':'#3a1010';
-    ctx.beginPath();ctx.arc(x-pr*5.5+i*pr*2.2,y+ph*.3,pr,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(x-pr*(fobMaxHp-1)+i*pr*2.2,y+ph*.3,pr,0,Math.PI*2);ctx.fill();
   }
 }
 
@@ -2623,19 +4295,20 @@ function updateHUD() {
   document.getElementById('hud-wave').textContent = waveLabel();
   document.getElementById('hud-kills').textContent = kills;
   document.getElementById('hud-supply').textContent = supply;
-  let s=''; for(let i=0;i<6;i++) s+=i<fobHP?'█':'░';
+  let s=''; for(let i=0;i<fobMaxHp;i++) s+=i<fobHP?'█':'░';
   document.getElementById('hud-fob').textContent = s;
 }
 
 function startWave() {
   if (waveActive||gameOver) return;
   buildSpawnQueue(); waveActive=true;
+  closeMenu();
   document.getElementById('btn-start').classList.add('hidden');
   document.getElementById('zoom-hint').classList.add('gone');
   document.getElementById('group-complete').style.display='none';
   document.getElementById('codex').classList.remove('open');
   codexOpen=false;
-  document.getElementById('btn-codex').classList.remove('active');
+  
   // Boss wave gets special banner treatment
   const isBoss = isBossWave();
   const b=document.getElementById('wave-banner');
@@ -2649,33 +4322,43 @@ document.getElementById('btn-start').addEventListener('pointerup',e=>{ e.stopPro
 
 function toggleRanges() {
   showRanges=!showRanges;
-  document.getElementById('btn-range').classList.toggle('active',showRanges);
+  updateMenuStates();
 }
 
 function endGame(victory) {
-  // Game is infinite — only ends on FOB overrun
   gameOver=true; waveActive=false;
+  saveBest();
+  document.getElementById('last-stand-banner').classList.remove('active');
   document.getElementById('end-screen').style.display='flex';
   const t=document.getElementById('end-title'), s=document.getElementById('end-sub');
+  const b=document.getElementById('end-best');
   t.style.color='#c04020';
   t.textContent='FOB OVERRUN';
   s.textContent=`${waveLabel()} — ${kills} CONFIRMED KILLS BEFORE BREACH`;
+  b.textContent = bestGroup ? `BEST RUN: G${bestGroup}-W${bestWave}` : '';
 }
 
 function restartGame() {
-  groupNum=1; waveInGroup=1; fobHP=6; supply=200; kills=0;
+  groupNum=1; waveInGroup=1; fobHP=6; fobMaxHp=6; supply=200; kills=0;
   waveActive=false; waveSpawnDone=false; gameOver=false;
-  showRanges=false; codexOpen=false;
+  showRanges=false; codexOpen=false; gamePaused=false; lastStand=false;
+  gameSpeed=1; passiveIncomeTick=0;
   unlockedGuns   = new Set(['M119']);
   activeUpgrades = [];
   fireMissionTokens=0; fireMissionArmed=false; fireMissionPending=null;
   enemies=[];projectiles=[];effects=[];cfShots=[];backblasts=[];bossRocketShots=[];placedGuns=[];spawnQueue=[];
+  fdcUnits=[]; foUnits=[];
+  cancelPlacement();
+  closeUnitInfo();
   closeGunInfo();
-  document.getElementById('end-screen').style.display='none';
+  document.getElementById('last-stand-banner').classList.remove('active');
+  document.getElementById('pause-screen').classList.remove('active');
+  document.getElementById('btn-speed').textContent='1×';
+  document.getElementById('btn-speed').className='';
   document.getElementById('group-complete').style.display='none';
   document.getElementById('fire-mission-hint').style.display='none';
-  document.getElementById('btn-range').classList.remove('active');
-  document.getElementById('btn-codex').classList.remove('active');
+  
+  
   document.getElementById('codex').classList.remove('open');
   document.getElementById('zoom-hint').classList.remove('gone');
   const btn=document.getElementById('btn-start');
@@ -2683,9 +4366,69 @@ function restartGame() {
   updateHUD(); updateFireMissionBtn(); buildLayout(); resetCamera(); refreshCodex();
 }
 
-// ═══════════════════════════════════════════════════
-// BOOT
-// ═══════════════════════════════════════════════════
+// ── HAMBURGER MENU ──
+let menuOpen = false;
+function toggleMenu() {
+  menuOpen = !menuOpen;
+  playSound('tap');
+  document.getElementById('side-menu').classList.toggle('open', menuOpen);
+  document.getElementById('menu-overlay').classList.toggle('open', menuOpen);
+  document.getElementById('btn-hamburger').classList.toggle('open', menuOpen);
+}
+function closeMenu() {
+  menuOpen = false;
+  document.getElementById('side-menu').classList.remove('open');
+  document.getElementById('menu-overlay').classList.remove('open');
+  document.getElementById('btn-hamburger').classList.remove('open');
+}
+
+// ── SOUND TOGGLE ──
+function toggleSound() {
+  _soundEnabled = !_soundEnabled;
+  const tog = document.getElementById('sound-toggle');
+  tog.classList.toggle('on', _soundEnabled);
+  document.getElementById('mb-sound').classList.toggle('active', !_soundEnabled);
+  try { localStorage.setItem('fb_sound', _soundEnabled?'1':'0'); } catch(e){}
+}
+function loadSoundPref() {
+  try { const v=localStorage.getItem('fb_sound'); if(v==='0') { _soundEnabled=false; document.getElementById('sound-toggle').classList.remove('on'); } } catch(e){}
+}
+
+// ── UPDATE MENU ITEM STATES ──
+function updateMenuStates() {
+  document.getElementById('mb-range').classList.toggle('active', showRanges);
+  document.getElementById('mb-intel').classList.toggle('active', codexOpen);
+  document.getElementById('mb-pause').classList.toggle('active', gamePaused);
+  document.getElementById('mb-pause').querySelector('.menu-icon').textContent = gamePaused ? '▶' : '⏸';
+  document.getElementById('mb-fm').textContent = '';
+  document.getElementById('mb-fm').innerHTML = `<span class="menu-icon">☢</span> Fire Mission (${fireMissionTokens})`;
+  document.getElementById('mb-fm').classList.toggle('active', fireMissionArmed);
+  document.getElementById('mb-fm').style.opacity = fireMissionTokens > 0 ? '1' : '0.4';
+  document.getElementById('mb-fm').style.pointerEvents = fireMissionTokens > 0 ? 'auto' : 'none';
+}
+const _tapWrap = (fn) => (...args) => { playSound('tap'); return fn(...args); };
+const _noTapFns = new Set(['playSound','update','render','drawPath','drawGunSlots',
+  'drawFortifications','drawPlacedGuns','drawCrew','drawEnemies','drawEffects',
+  'drawCFShots','drawBackblasts','drawProjectiles','drawBossRockets','drawFireMission',
+  'drawFOBMarker','drawSpawnMarker','drawRangeRings','drawRouteEditor','addFx',
+  'spawnEnemy','buildSpawnQueue','getPathPos','mfToScr','scrToMf','updateHUD',
+  'updateFireMissionBtn','updateFireMission','refreshCodex','recalcGunStats',
+  'checkRankUp','effectiveRof','activeCrew','tickPassiveIncome','checkLastStand',
+  'flashSupply','loadBest','saveBest','checkTutorial','np','nx','ny','lw','rs',
+  'zoomAt','clampCam','pinchDist','smoothPathStroke','waveLabel','waveName',
+  'waveIntelStr','nextWaveIntelStr','gSize','isBossWave','generateWaveGroups',
+  'shuffleArray','detonateFireMission','showCoordToast','_resumeAC','_out']);
+
+// Apply tap to explicit UI buttons
+['dismissTutorial','togglePause','cycleSpeed','toggleRanges','resetCamera',
+ 'toggleCodex','toggleFireMission','closeGunInfo','repairGun','displaceGun',
+ 'resupplyCrew','digIn','restartGame','closePicker','startWave',
+ 'pickUpgrade','toggleRouteEdit'].forEach(name => {
+  if (typeof window[name] === 'function') {
+    const orig = window[name];
+    window[name] = (...args) => { playSound('tap'); return orig(...args); };
+  }
+});
 loadImages(()=>{
   mapImg=images.map;
   if (mapImg) { mapNatW=mapImg.naturalWidth; mapNatH=mapImg.naturalHeight; }
@@ -2693,6 +4436,11 @@ loadImages(()=>{
   updateFireMissionBtn();
   document.getElementById('btn-start').textContent = `▶ START ${waveLabel()}`;
   refreshCodex();
+  loadBest();
+  loadSoundPref();
+  checkTutorial();
+  // Resume AudioContext on first user gesture (browser policy)
+  document.addEventListener('pointerdown', _resumeAC, { once:true });
   setTimeout(()=>document.getElementById('zoom-hint').classList.add('gone'),6000);
   render();
 });
