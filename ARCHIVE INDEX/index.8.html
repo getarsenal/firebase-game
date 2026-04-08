@@ -688,7 +688,6 @@
     <div id="dig-status"></div>
     <div id="dig-progress-wrap" style="display:none"><div id="dig-progress-bar"></div></div>
     <button id="btn-dig" onclick="digIn()"></button>
-    <button id="btn-camo" onclick="applyGunCamo()" style="display:none;margin-top:4px;"></button>
   </div>
 </div>
 
@@ -1439,11 +1438,6 @@ function loadImages(cb) {
     ['fdc_menu',  'assets/FDC_MenuIcon.png'],
     ['fo_map',    'assets/ForwardObserver_MapIcon.png'],
     ['fo_menu',   'assets/ForwardObserver_MenuIcon.png'],
-    // Emplacement images (static, face enemy road)
-    ['fort_scrape',  'assets/ScrapeIn.png'],
-    ['fort_sandbag', 'assets/SandBags.png'],
-    ['fort_harden',  'assets/Hardened.png'],
-    ['fort_camo',    'assets/CamoNetting.png'],
   ];
   let rem = list.length;
   list.forEach(([k,src]) => {
@@ -1662,8 +1656,7 @@ function placeGun(key,idx) {
     crew,
     mgTimer:0, mgAngle:-Math.PI/2, mgTarget:null,
     gunKills:0, rankIdx:0,
-    digLevel:0, isDigging:false, digTimer:0,
-    fortAngle:null, camouflaged:false,   // emplacement orientation + camo state
+    digLevel:0, isDigging:false, digTimer:0,   // fortification
   };
   s.gun=gun; placedGuns.push(gun);
   recalcGunStats(gun);   // apply any active upgrades
@@ -1867,41 +1860,12 @@ function openGunInfo(slotIdx) {
     digBtn.className   = canAfford ? '' : 'maxed';
   }
 
-  // Camouflage button (available once any dig level complete)
-  const camoBtn = document.getElementById('btn-camo');
-  if (camoBtn) {
-    if (gun.digLevel > 0) {
-      camoBtn.style.display = 'block';
-      if (gun.camouflaged) {
-        camoBtn.textContent = '🌿 CAMOUFLAGED — ACTIVE';
-        camoBtn.className   = 'btn-dig active';
-      } else {
-        camoBtn.textContent = `🌿 CAMOUFLAGE — $60`;
-        camoBtn.className   = supply >= 60 ? 'btn-dig' : 'btn-dig maxed';
-      }
-    } else {
-      camoBtn.style.display = 'none';
-    }
-  }
-
   document.getElementById('gun-info').classList.add('open');
 }
 
 function closeGunInfo() {
   document.getElementById('gun-info').classList.remove('open');
   selectedGunSlotIdx = null;
-}
-
-function applyGunCamo() {
-  if (selectedGunSlotIdx === null) return;
-  const gun = gunSlots[selectedGunSlotIdx]?.gun;
-  if (!gun || gun.camouflaged || gun.digLevel === 0) return;
-  if (supply < 60) return;
-  supply -= 60;
-  gun.camouflaged = true;
-  updateHUD();
-  openGunInfo(selectedGunSlotIdx);
-  playSound('tap');
 }
 
 // Refresh dig countdown + HP every second while panel is open
@@ -1970,9 +1934,7 @@ function displaceGun() {
   supply += refund;
   // Filter by slotIdx — more robust than indexOf when references shift
   placedGuns = placedGuns.filter(g => g.slotIdx !== gun.slotIdx);
-  gun.fireMode    = 'direct';
-  gun.fortAngle   = null;
-  gun.camouflaged = false;
+  gun.fireMode = 'direct'; // reset fire mode
   // Kill any in-flight projectiles from this gun to prevent ghost shots
   for (const p of projectiles) { if (p.sourceGun === gun) p.dead = true; }
   slot.occupied = false;
@@ -1993,17 +1955,6 @@ function digIn() {
   supply -= stage.cost;
   gun.isDigging = true;
   gun.digTimer  = stage.frames;
-  // Lock emplacement orientation toward nearest enemy route point (static forever after)
-  if (gun.fortAngle === null) {
-    let nearestD = Infinity;
-    let nearestPt = PATH_FRACS[0];
-    for (const pt of PATH_FRACS) {
-      const d = Math.hypot((pt[0]-gun.fx)*mapNatW, (pt[1]-gun.fy)*mapNatH);
-      if (d < nearestD) { nearestD=d; nearestPt=pt; }
-    }
-    // fortAngle = direction FROM gun TOWARD nearest route = front of emplacement faces enemy
-    gun.fortAngle = Math.atan2((nearestPt[1]-gun.fy)*mapNatH, (nearestPt[0]-gun.fx)*mapNatW);
-  }
   updateHUD();
   openGunInfo(selectedGunSlotIdx);
 }
@@ -2183,8 +2134,6 @@ function update() {
           if (d<bestD) { bestGun=g; bestD=d; }
         }
         if (bestGun) {
-          // Camouflaged emplacement: 70% chance enemy can't acquire target
-          if (bestGun.camouflaged && bestGun.digLevel > 0 && Math.random() < 0.70) continue;
           const ang=Math.atan2((bestGun.fy-e.fy)*mapNatH,(bestGun.fx-e.fx)*mapNatW);
           cfShots.push({
             fx:e.fx, fy:e.fy,
@@ -2448,7 +2397,6 @@ function update() {
         }
 
         if (g.hp<=0) {
-          if (g.digLevel > 0) destroyEmplacement(g);
           supply+=30;
           const sIdx=placedGuns.indexOf(g);
           if (sIdx>-1) placedGuns.splice(sIdx,1);
@@ -2569,7 +2517,6 @@ function update() {
       }
       // Safe splice after iteration
       for (const gun of toDestroy) {
-        if (gun.digLevel > 0) destroyEmplacement(gun);
         supply += 30;
         const sIdx = placedGuns.indexOf(gun);
         if (sIdx > -1) placedGuns.splice(sIdx, 1);
@@ -2929,8 +2876,8 @@ function drawFDCUnits() {
       ctx.beginPath(); ctx.arc(x,y,Math.max(3,6/camZ),0,Math.PI*2); ctx.fill();
     }
 
-    // ── Concealment netting overlay ──
-    if (fdc.concealed) drawConcealmentNetting(x, y, sz);
+    // ── Concealment foliage overlay ──
+    if (fdc.concealed) drawConcealmentFoliage(x, y, sz);
 
     // ── HP pips (show when zoomed in) ──
     if (camZ > 1.5) {
@@ -2988,8 +2935,8 @@ function drawFOUnits() {
       ctx.beginPath(); ctx.arc(x,y,Math.max(2.5,5/camZ),0,Math.PI*2); ctx.fill();
     }
 
-    // ── Concealment netting ──
-    if (fo.concealed) drawConcealmentNetting(x, y, sz);
+    // ── Concealment foliage ──
+    if (fo.concealed) drawConcealmentFoliage(x, y, sz);
 
     if (camZ > 1.5) {
       const pr=Math.max(1.2,rs(3));
@@ -3005,28 +2952,21 @@ function drawFOUnits() {
 }
 
 // ── CONCEALMENT FOLIAGE ──
-function drawConcealmentNetting(x, y, sz) {
-  const img = images['fort_camo'];
-  if (img) {
-    const netSz = sz * 2.2;
-    ctx.save();
-    ctx.globalAlpha = 0.82;
-    ctx.drawImage(img, x - netSz, y - netSz, netSz * 2, netSz * 2);
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  } else {
-    // Fallback: green blobs if image not loaded
-    const seed = x * 31 + y * 17;
-    ctx.fillStyle = 'rgba(40,80,30,.55)';
-    for (let i = 0; i < 8; i++) {
-      const ang = (i/8)*Math.PI*2 + (seed % 1);
-      const r   = sz * 0.9 + ((seed * (i+3)) % 1) * sz * 0.6;
-      const br  = Math.max(1.5, sz * 0.35);
-      ctx.beginPath();
-      ctx.arc(x + Math.cos(ang)*r, y + Math.sin(ang)*r, br, 0, Math.PI*2);
-      ctx.fill();
-    }
+function drawConcealmentFoliage(x, y, sz) {
+  // Scattered random green blobs suggesting foliage
+  const seed=[.3,.7,.1,.9,.5,.2,.8,.4,.6];
+  ctx.fillStyle='rgba(40,80,30,.55)';
+  for (let i=0;i<8;i++) {
+    const ang = (i/8)*Math.PI*2 + seed[i%9];
+    const r   = sz*0.9 + seed[(i+3)%9]*sz*0.6;
+    const br  = Math.max(1.5, sz*0.35+seed[(i+1)%9]*sz*0.2);
+    ctx.beginPath();
+    ctx.arc(x+Math.cos(ang)*r, y+Math.sin(ang)*r, br, 0, Math.PI*2);
+    ctx.fill();
   }
+  // Centre bush
+  ctx.fillStyle='rgba(30,70,20,.65)';
+  ctx.beginPath(); ctx.arc(x, y, Math.max(2,sz*0.6), 0, Math.PI*2); ctx.fill();
 }
 
 // ── HOLD PROGRESS DRAW (called from render) ──
@@ -3463,178 +3403,207 @@ function drawRangeRings() {
 }
 
 // ─── FORTIFICATIONS ───
-// Emplacements drawn from PNG assets, static orientation facing enemy road.
-// Damage state overlaid procedurally based on HP %. Camo netting on top.
-
-// Seeded pseudo-random for consistent damage marks per gun
-function seededRand(seed, idx) {
-  const x = Math.sin(seed * 9301 + idx * 4999 + 1) * 93188;
-  return x - Math.floor(x);
-}
-
-function destroyEmplacement(gun) {
-  // Smoke burst — layered particles
-  for (let i = 0; i < 20; i++) {
-    const ang  = Math.random() * Math.PI * 2;
-    const dist = Math.random() * gun.iconSz * 1.2 / mapNatW;
-    effects.push({
-      fx: gun.fx + Math.cos(ang) * dist,
-      fy: gun.fy + Math.sin(ang) * dist,
-      color: i < 8 ? '#1a1410' : i < 14 ? '#4a3820' : '#c08030',
-      life: 40 + Math.floor(Math.random() * 30),
-      maxLife: 70,
-    });
-  }
-  // Lingering smoke columns
-  for (let i = 0; i < 6; i++) {
-    const ang  = Math.random() * Math.PI * 2;
-    const dist = Math.random() * gun.iconSz * 0.6 / mapNatW;
-    effects.push({
-      fx: gun.fx + Math.cos(ang) * dist,
-      fy: gun.fy + Math.sin(ang) * dist,
-      color: '#2a2218',
-      life: 80 + Math.floor(Math.random() * 40),
-      maxLife: 120,
-    });
-  }
-}
-
+// Walls are drawn as tight solid arcs flush with the gun icon.
+// Opening faces the REAR of the gun (gun.angle + PI = behind the barrel).
 function drawFortifications() {
   for (const gun of placedGuns) {
     if (!gun.digLevel && !gun.isDigging) continue;
 
-    const [x, y] = np(gun.fx, gun.fy);
-    const sz     = gun.iconSz;
+    const [x, y]  = np(gun.fx, gun.fy);
+    const sz      = gun.iconSz;
 
-    // ── Image key for completed levels ──
-    const imgKeys = ['fort_scrape', 'fort_sandbag', 'fort_harden'];
+    // Gap centered on the REAR of the gun
+    const rearAng  = gun.angle + Math.PI;
+    const gapHalf  = 0.42;   // ~24° each side — clear entry/exit gap
+    const arcStart = rearAng + gapHalf;
+    const arcSpan  = Math.PI * 2 - gapHalf * 2;   // ~314° of coverage
 
-    // ── Orientation: static fortAngle (toward enemy road) ──
-    // If not yet set (shouldn't happen but safety), use gun angle
-    const fAngle = gun.fortAngle !== null ? gun.fortAngle : gun.angle;
+    const buildingLevel = gun.isDigging ? gun.digLevel : -1;
+    const progress      = gun.isDigging ? 1 - gun.digTimer / DIG_STAGES[gun.digLevel].frames : 1;
+    const drawArcSpan   = (lvl) => lvl === buildingLevel ? arcSpan * progress : arcSpan;
 
-    // ── Draw size — large enough to wrap around the gun icon ──
-    const drawSz = sz * 2.6;  // half-width/height of image in nat-px
+    // ─── LEVEL 1: Scraped dirt berm ───────────────────────────────────────
+    if (gun.digLevel >= 1 || buildingLevel === 0) {
+      const alpha = buildingLevel === 0 ? Math.max(0.1, progress) : 1;
+      const r1    = sz * 0.68;
+      const span  = drawArcSpan(0);
 
-    // ── HP damage state ──
-    const hpFrac  = gun.hp / gun.maxHp;  // 1 = pristine, 0 = destroyed
-    const seed    = gun.id || 0;
+      // Outer raised earth — wider stroke, darker
+      ctx.strokeStyle = `rgba(72,54,28,${0.80 * alpha})`;
+      ctx.lineWidth   = Math.max(2.5, sz * 0.22 / camZ);
+      ctx.lineCap     = 'butt';
+      ctx.beginPath();
+      ctx.arc(x, y, r1, arcStart, arcStart + span);
+      ctx.stroke();
 
-    // ── Draw each completed fortification level ──
-    for (let lvl = 0; lvl < gun.digLevel; lvl++) {
-      const img = images[imgKeys[lvl]];
-      if (!img) continue;
+      // Inner bright earth — slightly narrower, lighter
+      ctx.strokeStyle = `rgba(110,84,42,${0.70 * alpha})`;
+      ctx.lineWidth   = Math.max(1.5, sz * 0.12 / camZ);
+      ctx.beginPath();
+      ctx.arc(x, y, r1, arcStart, arcStart + span);
+      ctx.stroke();
 
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(fAngle + Math.PI / 2); // +PI/2 so "top" of image (opening) faces rear
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(img, -drawSz, -drawSz, drawSz * 2, drawSz * 2);
-      ctx.globalAlpha = 1;
-
-      // ── Damage overlays — drawn in emplacement local space ──
-      if (hpFrac < 0.75) {
-        const dmgLevel = hpFrac < 0.25 ? 3 : hpFrac < 0.50 ? 2 : 1;
-
-        // Scorch marks — dark irregular circles
-        const scorchCount = dmgLevel * 4;
-        for (let i = 0; i < scorchCount; i++) {
-          const ang = seededRand(seed, i * 7 + lvl * 31) * Math.PI * 2;
-          const r   = seededRand(seed, i * 7 + lvl * 31 + 1) * drawSz * 0.85;
-          const br  = Math.max(1, drawSz * (0.06 + seededRand(seed, i*7+2) * 0.10) / camZ);
-          ctx.fillStyle = `rgba(10,8,4,${0.25 + dmgLevel * 0.12})`;
+      // Scoop marks — radial ticks showing disturbed earth
+      if (alpha > 0.4) {
+        ctx.strokeStyle = `rgba(58,42,20,${0.5 * alpha})`;
+        ctx.lineWidth   = lw(0.8);
+        ctx.lineCap     = 'round';
+        const ticks = 10;
+        for (let i = 0; i < ticks; i++) {
+          const a  = arcStart + (i / (ticks - 1)) * span;
+          const ir = r1 - sz * 0.12;
+          const or = r1 + sz * 0.10;
           ctx.beginPath();
-          ctx.arc(Math.cos(ang)*r, Math.sin(ang)*r, br, 0, Math.PI*2);
-          ctx.fill();
-        }
-
-        // Crack lines — thin dark jagged strokes
-        const crackCount = dmgLevel * 2;
-        ctx.strokeStyle = `rgba(6,4,2,${0.30 + dmgLevel * 0.12})`;
-        ctx.lineCap = 'round';
-        ctx.lineWidth = Math.max(0.4, 0.8 / camZ);
-        for (let i = 0; i < crackCount; i++) {
-          const startAng = seededRand(seed, i * 13 + lvl * 17) * Math.PI * 2;
-          const startR   = seededRand(seed, i * 13 + lvl * 17 + 1) * drawSz * 0.5;
-          const sx2      = Math.cos(startAng) * startR;
-          const sy2      = Math.sin(startAng) * startR;
-          ctx.beginPath();
-          ctx.moveTo(sx2, sy2);
-          // 3 jagged segments
-          let cx2 = sx2, cy2 = sy2;
-          for (let seg = 0; seg < 3; seg++) {
-            const segAng = startAng + (seededRand(seed, i*13+seg+3) - 0.5) * 1.2;
-            const segLen = drawSz * (0.10 + seededRand(seed, i*13+seg+6) * 0.14);
-            cx2 += Math.cos(segAng) * segLen;
-            cy2 += Math.sin(segAng) * segLen;
-            ctx.lineTo(cx2, cy2);
-          }
+          ctx.moveTo(x + Math.cos(a) * ir, y + Math.sin(a) * ir);
+          ctx.lineTo(x + Math.cos(a) * or, y + Math.sin(a) * or);
           ctx.stroke();
         }
+      }
+    }
 
-        // Heavy damage: pulsing red glow at damage points
-        if (dmgLevel >= 3) {
-          const glowPulse = 0.4 + 0.25 * Math.sin(performance.now() * 0.004);
-          for (let i = 0; i < 3; i++) {
-            const ang = seededRand(seed, i * 19 + lvl * 23) * Math.PI * 2;
-            const r   = seededRand(seed, i * 19 + lvl * 23 + 1) * drawSz * 0.7;
-            const br  = Math.max(2, drawSz * 0.12 / camZ);
-            const grad = ctx.createRadialGradient(
-              Math.cos(ang)*r, Math.sin(ang)*r, 0,
-              Math.cos(ang)*r, Math.sin(ang)*r, br
-            );
-            grad.addColorStop(0, `rgba(255,80,10,${glowPulse * 0.55})`);
-            grad.addColorStop(1, 'rgba(255,40,0,0)');
-            ctx.fillStyle = grad;
+    // ─── LEVEL 2: Sandbag wall ────────────────────────────────────────────
+    if (gun.digLevel >= 2 || buildingLevel === 1) {
+      const alpha = buildingLevel === 1 ? Math.max(0.1, progress) : 1;
+      const r2    = sz * 0.78;                      // sits just outside dirt berm
+      const wallW = Math.max(3, sz * 0.28 / camZ);  // wall thickness (bag height × 2 rows)
+      const span  = drawArcSpan(1);
+
+      // ── Back fill: dark shadow inside the wall ──
+      ctx.strokeStyle = `rgba(50,38,18,${0.6 * alpha})`;
+      ctx.lineWidth   = wallW * 1.15;
+      ctx.lineCap     = 'butt';
+      ctx.beginPath();
+      ctx.arc(x, y, r2, arcStart, arcStart + span);
+      ctx.stroke();
+
+      // ── Main sandbag fill ──
+      ctx.strokeStyle = `rgba(148,118,56,${0.92 * alpha})`;
+      ctx.lineWidth   = wallW;
+      ctx.beginPath();
+      ctx.arc(x, y, r2, arcStart, arcStart + span);
+      ctx.stroke();
+
+      // ── Top highlight (lighter top face) ──
+      ctx.strokeStyle = `rgba(180,148,76,${0.50 * alpha})`;
+      ctx.lineWidth   = Math.max(1, sz * 0.05 / camZ);
+      ctx.beginPath();
+      ctx.arc(x, y, r2 + wallW * 0.35, arcStart, arcStart + span);
+      ctx.stroke();
+
+      // ── Bag seam lines — perpendicular ticks along the wall ──
+      // Two rows: offset by half-bag width
+      const bagArcW = sz * 0.20 / r2;  // angular width of one bag
+      ctx.strokeStyle = `rgba(88,68,28,${0.55 * alpha})`;
+      ctx.lineWidth   = lw(0.7);
+      ctx.lineCap     = 'round';
+
+      for (let row = 0; row < 2; row++) {
+        const rowOffset = row * bagArcW * 0.5;   // offset every other row
+        let a = arcStart + rowOffset;
+        while (a < arcStart + span - bagArcW * 0.3) {
+          // Seam line: radial line through the wall
+          const inner = r2 - wallW * 0.5;
+          const outer = r2 + wallW * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(x + Math.cos(a) * inner, y + Math.sin(a) * inner);
+          ctx.lineTo(x + Math.cos(a) * outer, y + Math.sin(a) * outer);
+          ctx.stroke();
+          // Bag body indent (small arc along middle)
+          const midA = a + bagArcW * 0.5;
+          if (midA < arcStart + span) {
+            ctx.strokeStyle = `rgba(120,92,40,${0.30 * alpha})`;
+            ctx.lineWidth   = lw(0.5);
             ctx.beginPath();
-            ctx.arc(Math.cos(ang)*r, Math.sin(ang)*r, br, 0, Math.PI*2);
-            ctx.fill();
+            ctx.arc(x, y, r2, a + bagArcW * 0.1, midA);
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(88,68,28,${0.55 * alpha})`;
+            ctx.lineWidth   = lw(0.7);
           }
+          a += bagArcW;
         }
       }
-
-      ctx.restore();
     }
 
-    // ── Camouflage netting overlay (on top of all fortification levels) ──
-    if (gun.camouflaged && gun.digLevel > 0) {
-      const camoImg = images['fort_camo'];
-      if (camoImg) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(fAngle + Math.PI / 2);
-        ctx.globalAlpha = 0.80;
-        ctx.drawImage(camoImg, -drawSz * 1.05, -drawSz * 1.05, drawSz * 2.1, drawSz * 2.1);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-    }
+    // ─── LEVEL 3: Hardened concrete/timber parapet ────────────────────────
+    if (gun.digLevel >= 3 || buildingLevel === 2) {
+      const alpha  = buildingLevel === 2 ? Math.max(0.1, progress) : 1;
+      const r3     = sz * 0.90;                      // outermost ring
+      const wallW3 = Math.max(4, sz * 0.34 / camZ);  // thicker than sandbags
+      const span   = drawArcSpan(2);
+      const blockArcW = sz * 0.26 / r3;              // angular width of one block
 
-    // ── Construction in-progress: fade-in of next level ──
-    if (gun.isDigging && gun.digLevel < imgKeys.length) {
-      const progress = 1 - gun.digTimer / DIG_STAGES[gun.digLevel].frames;
-      const nextImg  = images[imgKeys[gun.digLevel]];
-      if (nextImg) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(fAngle + Math.PI / 2);
-        ctx.globalAlpha = progress * 0.6;
-        ctx.drawImage(nextImg, -drawSz, -drawSz, drawSz * 2, drawSz * 2);
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-
-      // Construction progress arc
-      const sweepR  = drawSz * (1.12 + gun.digLevel * 0.14);
-      ctx.strokeStyle = 'rgba(200,160,60,0.70)';
-      ctx.lineWidth   = lw(2); ctx.lineCap = 'round';
+      // ── Back shadow ──
+      ctx.strokeStyle = `rgba(30,28,24,${0.65 * alpha})`;
+      ctx.lineWidth   = wallW3 * 1.12;
+      ctx.lineCap     = 'butt';
       ctx.beginPath();
-      ctx.arc(x, y, sweepR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.arc(x, y, r3, arcStart, arcStart + span);
+      ctx.stroke();
+
+      // ── Block body — alternating colours ──
+      let a = arcStart;
+      let blockIdx = 0;
+      while (a < arcStart + span) {
+        const blockEnd = Math.min(a + blockArcW, arcStart + span);
+        ctx.strokeStyle = blockIdx % 2 === 0
+          ? `rgba(82,78,68,${0.92 * alpha})`
+          : `rgba(68,64,55,${0.92 * alpha})`;
+        ctx.lineWidth   = wallW3;
+        ctx.lineCap     = 'butt';
+        ctx.beginPath();
+        ctx.arc(x, y, r3, a + 0.008, blockEnd - 0.008);  // tiny gap = mortar joint
+        ctx.stroke();
+        a += blockArcW;
+        blockIdx++;
+      }
+
+      // ── Top highlight — concrete cap ──
+      ctx.strokeStyle = `rgba(110,105,90,${0.55 * alpha})`;
+      ctx.lineWidth   = Math.max(1.2, sz * 0.06 / camZ);
+      ctx.lineCap     = 'butt';
+      ctx.beginPath();
+      ctx.arc(x, y, r3 + wallW3 * 0.38, arcStart, arcStart + span);
+      ctx.stroke();
+
+      // ── Rebar/stress lines on each block face ──
+      ctx.strokeStyle = `rgba(40,38,30,${0.35 * alpha})`;
+      ctx.lineWidth   = lw(0.5);
+      ctx.lineCap     = 'round';
+      a = arcStart;
+      while (a < arcStart + span) {
+        const midA   = a + blockArcW * 0.5;
+        const inner  = r3 - wallW3 * 0.48;
+        const outer  = r3 + wallW3 * 0.48;
+        // Vertical mortar joint
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * inner, y + Math.sin(a) * inner);
+        ctx.lineTo(x + Math.cos(a) * outer, y + Math.sin(a) * outer);
+        ctx.stroke();
+        // Horizontal mid-line (block course)
+        if (midA < arcStart + span) {
+          ctx.beginPath();
+          ctx.arc(x, y, r3, a + 0.01, Math.min(a + blockArcW - 0.01, arcStart + span));
+          ctx.stroke();
+        }
+        a += blockArcW;
+      }
+    }
+
+    // ─── Construction progress arc ────────────────────────────────────────
+    if (gun.isDigging) {
+      const elapsed = 1 - gun.digTimer / DIG_STAGES[gun.digLevel].frames;
+      const sweepR  = sz * (1.12 + gun.digLevel * 0.14);
+      ctx.strokeStyle = 'rgba(200,160,60,0.70)';
+      ctx.lineWidth   = lw(2);
+      ctx.lineCap     = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y, sweepR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * elapsed);
       ctx.stroke();
       if (camZ > 1.2) {
-        ctx.fillStyle = 'rgba(200,160,60,0.85)';
-        ctx.font = `bold ${Math.max(5, rs(9))}px Courier New`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillStyle    = 'rgba(200,160,60,0.85)';
+        ctx.font         = `bold ${Math.max(5, rs(9))}px Courier New`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'top';
         ctx.fillText(`⛏ ${Math.ceil(gun.digTimer / 60)}s`, x, y - sweepR - rs(12));
       }
     }
