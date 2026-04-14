@@ -2107,6 +2107,14 @@ function _initAudio() {
   try {
     _ac     = new (window.AudioContext || window.webkitAudioContext)();
     _master = _ac.createGain(); _master.gain.value = 0.72; _master.connect(_ac.destination);
+    // iOS CRITICAL: must produce audio synchronously in the same call stack as the gesture
+    // or iOS immediately re-suspends the context. Silent 1-sample buffer unlocks it.
+    const unlock = _ac.createBuffer(1, 1, _ac.sampleRate);
+    const unlockSrc = _ac.createBufferSource();
+    unlockSrc.buffer = unlock;
+    unlockSrc.connect(_ac.destination);
+    unlockSrc.start(0);
+    _ac.resume();
     // Auto-resume on iOS interruption
     _ac.onstatechange = () => { if (_ac.state !== 'running') _ac.resume(); };
     // Load audio files now that context exists
@@ -7923,7 +7931,7 @@ loadImages(()=>{
   document.addEventListener('pointerdown', ()=>{
     _initAudio();
     _resumeAC();
-    setTimeout(()=>{ if (!_loopNode && _musicEnabled) playLooping('menu_drum'); }, 200);
+    if (!_loopNode && _musicEnabled) setTimeout(()=>playLooping('menu_drum'), 50);
   }, { once:true });
   setTimeout(()=>document.getElementById('zoom-hint').classList.add('gone'),6000);
   // Resume AudioContext and music when returning from background
