@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>FIREBASE — Camera Tool</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#111;color:#c8a040;font-family:'Courier New',monospace;overflow:hidden;touch-action:none;}
+#c{display:block;width:100vw;height:100vh;}
+#panel{
+  position:fixed;top:0;left:0;width:300px;height:100vh;
+  background:rgba(0,0,0,0.93);border-right:1px solid #4a3418;
+  overflow-y:auto;padding:10px;z-index:10;
+  display:flex;flex-direction:column;gap:8px;
+}
+.section{border:1px solid #2a2010;padding:8px;border-radius:3px;}
+.section-title{font-size:10px;color:#7a5830;letter-spacing:.15em;margin-bottom:6px;text-transform:uppercase;}
+.row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.row label{font-size:11px;color:#a08040;width:44px;flex-shrink:0;}
+.row input[type=range]{flex:1;height:28px;accent-color:#c8a040;cursor:pointer;min-width:0;}
+.row input.val{
+  width:72px;flex-shrink:0;font-size:11px;color:#ff9030;
+  background:#1a0f05;border:1px solid #4a3418;border-radius:2px;
+  padding:3px 4px;text-align:right;font-family:'Courier New',monospace;
+  -moz-appearance:textfield;
+}
+.row input.val::-webkit-outer-spin-button,
+.row input.val::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0;
+}
+.row input.val:focus{outline:none;border-color:#c8a040;background:#2a1808;}
+select{
+  width:100%;padding:8px;background:#0a0806;border:1px solid #4a3418;
+  color:#c8a040;font-family:'Courier New',monospace;font-size:12px;cursor:pointer;
+}
+.btn{
+  width:100%;padding:10px;background:#1e1a10;border:1px solid #4a3418;
+  color:#c8a040;font-family:'Courier New',monospace;font-size:11px;
+  letter-spacing:.1em;cursor:pointer;text-transform:uppercase;
+}
+.btn:active{background:#2e2a20;}
+#copyBtn{background:#1a0a02;border-color:#c86010;color:#ff9030;font-size:12px;padding:12px;}
+#saveBtn{background:#021a08;border-color:#20a040;color:#40ff80;font-size:11px;padding:10px;}
+#status{font-size:10px;color:#60a060;padding:4px;word-break:break-all;line-height:1.4;}
+#output{font-size:10px;color:#ff9030;padding:6px;background:#0a0806;border:1px solid #2a1808;
+  border-radius:2px;line-height:1.7;min-height:50px;}
+.hint{font-size:9px;color:#4a3418;line-height:1.5;}
+#saved{font-size:10px;color:#40a060;padding:4px;background:#020a04;border:1px solid #204020;
+  border-radius:2px;line-height:1.6;min-height:30px;max-height:200px;overflow-y:auto;}
+.snapbtn{padding:6px !important;font-size:10px !important;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="panel">
+  <div style="font-size:13px;letter-spacing:.2em;color:#c8a040;padding:4px 0 6px;">⊹ FIREBASE MODEL TOOL</div>
+
+  <div class="section">
+    <div class="section-title">📁 Model</div>
+    <select id="modelPicker" onchange="loadSelected()">
+      <optgroup label="── GUNS ──">
+        <option value="assets/M119.glb">M119 (gun key: M119)</option>
+        <option value="assets/M777.glb">M777 (gun key: M777)</option>
+        <option value="assets/M109.glb">M109 (gun key: M109)</option>
+        <option value="assets/M142.glb">M142 (gun key: M142)</option>
+        <option value="assets/M270.glb">M270 (gun key: M270)</option>
+      </optgroup>
+      <optgroup label="── ENEMIES ──">
+        <option value="assets/SCOUT.glb">SCOUT (type: scout)</option>
+        <option value="assets/TRUCK.glb">TRUCK (type: truck)</option>
+        <option value="assets/BMP.glb">BMP (type: bmp)</option>
+        <option value="assets/BTR.glb">BTR (type: btr)</option>
+        <option value="assets/T72.glb">T72 (type: tank_t72)</option>
+        <option value="assets/T80.glb">T80 (type: tank_t80)</option>
+        <option value="assets/MSTA.glb">MSTA (type: msta)</option>
+        <option value="assets/TOS.glb">TOS (type: tos)</option>
+      </optgroup>
+      <optgroup label="── OTHER ──">
+        <option value="assets/Cannon_Crew_Member.glb">Cannon Crew Member</option>
+        <option value="assets/Enemy_Soldier.glb">Enemy Soldier</option>
+        <option value="assets/FDC.glb">FDC</option>
+        <option value="assets/Friendly_Machine_Gunner.glb">Friendly Machine Gunner</option>
+      </optgroup>
+    </select>
+    <div id="status" style="margin-top:6px;">Select a model above</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🔧 Rotate Model</div>
+    <div class="hint">Spin until barrel/front faces toward you (into screen = +Z). Type exact radians for micro-adjust.</div><br>
+    <div class="row"><label>Rot X</label><input type="range" id="rx" min="-3.1416" max="3.1416" step="any" value="0"><input class="val" type="number" id="vrx" step="0.001" value="0.000"></div>
+    <div class="row"><label>Rot Y</label><input type="range" id="ry" min="-3.1416" max="3.1416" step="any" value="0"><input class="val" type="number" id="vry" step="0.001" value="0.000"></div>
+    <div class="row"><label>Rot Z</label><input type="range" id="rz" min="-3.1416" max="3.1416" step="any" value="0"><input class="val" type="number" id="vrz" step="0.001" value="0.000"></div>
+    <div class="row" style="margin-top:4px;">
+      <button class="btn snapbtn" onclick="snapRot(-1.5708,0,0)">X -90°</button>
+      <button class="btn snapbtn" onclick="snapRot(1.5708,0,0)">X +90°</button>
+      <button class="btn snapbtn" onclick="snapRot(0,1.5708,0)">Y +90°</button>
+      <button class="btn snapbtn" onclick="snapRot(0,3.1416,0)">Y 180°</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🎯 Camera (for gun barrel view)</div>
+    <div class="hint">Drag canvas = orbit (syncs to Cam X/Y/Z). Sliders & type-in fields = absolute position. Saved values = exactly what you see here.</div><br>
+    <div class="row"><label>Cam X</label><input type="range" id="cx" min="-0.5" max="0.5" step="any" value="0"><input class="val" type="number" id="vcx" step="0.0001" value="0.0000"></div>
+    <div class="row"><label>Cam Y</label><input type="range" id="cy" min="-0.3" max="0.5" step="any" value="0.003"><input class="val" type="number" id="vcy" step="0.0001" value="0.0030"></div>
+    <div class="row"><label>Cam Z</label><input type="range" id="cz" min="-0.5" max="0.5" step="any" value="0.02"><input class="val" type="number" id="vcz" step="0.0001" value="0.0200"></div>
+    <div class="row"><label>Yaw</label><input type="range" id="yaw" min="-3.1416" max="3.1416" step="any" value="0"><input class="val" type="number" id="vyaw" step="0.001" value="0.000"></div>
+    <div class="row"><label>Pitch</label><input type="range" id="pitch" min="-1.5" max="1.5" step="any" value="0"><input class="val" type="number" id="vpitch" step="0.001" value="0.000"></div>
+    <div class="row"><label>FOV</label><input type="range" id="fov" min="15" max="110" step="1" value="60"><input class="val" type="number" id="vfov" step="1" value="60"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 Current Values</div>
+    <div id="output">—</div>
+  </div>
+
+  <button class="btn" id="saveBtn" onclick="saveModel()">💾 SAVE THIS MODEL'S VALUES</button>
+  <button class="btn" id="copyBtn" onclick="copyAll()">📋 COPY ALL SAVED VALUES</button>
+  <button class="btn" onclick="resetCam()">↺ RESET CAMERA</button>
+
+  <div class="section">
+    <div class="section-title">✅ Saved Models</div>
+    <div id="saved">None yet</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── Three.js setup ──
+const canvas = document.getElementById('c');
+const W = window.innerWidth, H = window.innerHeight;
+canvas.width = W; canvas.height = H;
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setSize(W,H); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1e2a);
+const camera = new THREE.PerspectiveCamera(60, W/H, 0.00001, 100);
+scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+const sun = new THREE.DirectionalLight(0xfff0d8, 1.0); sun.position.set(1,2,1); scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8090ff, 0.4); fill.position.set(-1,0.5,-1); scene.add(fill);
+scene.add(new THREE.GridHelper(0.3, 30, 0x304040, 0x203030));
+scene.add(new THREE.AxesHelper(0.02));
+
+// ── Precision per field (decimal places for display) ──
+const PRECISION = {rx:3, ry:3, rz:3, cx:4, cy:4, cz:4, yaw:3, pitch:3, fov:0};
+
+// Set both slider and number input for an id, without looping through listeners
+function setPair(id, v){
+  const slider = document.getElementById(id);
+  const num    = document.getElementById('v'+id);
+  const minV = +slider.min, maxV = +slider.max;
+  slider.value = Math.max(minV, Math.min(maxV, v));
+  num.value = (+v).toFixed(PRECISION[id]);
+}
+
+// Canonical value = number input (source of truth; lets typed values exceed slider range safely)
+function readVal(id){ return +document.getElementById('v'+id).value; }
+
+// ── Orbit ──
+let orbitTheta=0.3, orbitPhi=0.8, orbitDist=0.08;
+let isDragging=false, lastMX=0, lastMY=0;
+canvas.addEventListener('pointerdown', e=>{isDragging=true;lastMX=e.clientX;lastMY=e.clientY;canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointermove', e=>{
+  if(!isDragging)return;
+  orbitTheta-=(e.clientX-lastMX)*0.01;
+  orbitPhi=Math.max(0.05,Math.min(Math.PI-0.05,orbitPhi+(e.clientY-lastMY)*0.01));
+  lastMX=e.clientX;lastMY=e.clientY;
+  applyOrbit();
+});
+canvas.addEventListener('pointerup',()=>{isDragging=false;});
+let lastPinch=0;
+canvas.addEventListener('touchstart',e=>{if(e.touches.length===2)lastPinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);},{passive:true});
+canvas.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);orbitDist=Math.max(0.008,Math.min(0.4,orbitDist*(lastPinch/d)));lastPinch=d;applyOrbit();}},{passive:true});
+canvas.addEventListener('wheel',e=>{orbitDist=Math.max(0.008,Math.min(0.4,orbitDist+e.deltaY*0.0001));applyOrbit();},{passive:true});
+
+// Orbit drag/pinch/wheel → write absolute XYZ into Cam X/Y/Z, then re-render
+function applyOrbit(){
+  const ox=orbitDist*Math.sin(orbitPhi)*Math.sin(orbitTheta);
+  const oy=orbitDist*Math.cos(orbitPhi);
+  const oz=orbitDist*Math.sin(orbitPhi)*Math.cos(orbitTheta);
+  setPair('cx', ox);
+  setPair('cy', oy);
+  setPair('cz', oz);
+  updateCam();
+}
+
+function updateCam(){
+  const cx=readVal('cx'), cy=readVal('cy'), cz=readVal('cz');
+  const yaw=readVal('yaw'), pitch=readVal('pitch');
+  camera.fov=readVal('fov');
+  camera.updateProjectionMatrix();
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(
+    cx+Math.sin(yaw)*Math.cos(pitch)*10,
+    cy+Math.sin(pitch)*10,
+    cz+Math.cos(yaw)*Math.cos(pitch)*10
+  );
+  updateReadout();
+}
+
+// ── Wire slider ↔ number input both ways ──
+function wirePair(id, onChange){
+  const slider = document.getElementById(id);
+  const num    = document.getElementById('v'+id);
+  // Slider drag → copy to number input → call onChange
+  slider.addEventListener('input', ()=>{
+    num.value = (+slider.value).toFixed(PRECISION[id]);
+    onChange();
+  });
+  // Number typed → copy to slider (clamped for thumb position) → call onChange
+  const handleNum = ()=>{
+    const v = parseFloat(num.value);
+    if(isNaN(v)) return;
+    const minV = +slider.min, maxV = +slider.max;
+    slider.value = Math.max(minV, Math.min(maxV, v));
+    onChange();
+  };
+  num.addEventListener('input', handleNum);
+  num.addEventListener('change', handleNum);
+}
+
+['cx','cy','cz','yaw','pitch','fov'].forEach(id=>wirePair(id, updateCam));
+['rx','ry','rz'].forEach(id=>wirePair(id, updateModel));
+
+function snapRot(x,y,z){
+  setPair('rx', x); setPair('ry', y); setPair('rz', z);
+  updateModel();
+}
+
+// ── Model ──
+let model=null;
+function updateModel(){
+  if(!model)return;
+  model.rotation.x=readVal('rx');
+  model.rotation.y=readVal('ry');
+  model.rotation.z=readVal('rz');
+}
+
+function resetCam(){
+  orbitTheta=0.3; orbitPhi=0.8; orbitDist=0.08;
+  setPair('yaw', 0); setPair('pitch', 0); setPair('fov', 60);
+  applyOrbit();
+}
+
+// ── Saved results ──
+const saved = {};
+function saveModel(){
+  const sel=document.getElementById('modelPicker');
+  const key=sel.options[sel.selectedIndex].text;
+  saved[key]={
+    camX:readVal('cx').toFixed(4),
+    camY:readVal('cy').toFixed(4),
+    camZ:readVal('cz').toFixed(4),
+    yaw:readVal('yaw').toFixed(3),
+    pitch:readVal('pitch').toFixed(3),
+    fov:readVal('fov').toFixed(0),
+    rotX:readVal('rx').toFixed(3),
+    rotY:readVal('ry').toFixed(3),
+    rotZ:readVal('rz').toFixed(3),
+  };
+  renderSaved();
+  document.getElementById('status').textContent='✓ Saved: '+key;
+}
+
+function renderSaved(){
+  const el=document.getElementById('saved');
+  const keys=Object.keys(saved);
+  if(!keys.length){el.textContent='None yet';return;}
+  el.innerHTML=keys.map(k=>{
+    const v=saved[k];
+    return `<b style="color:#c8a040">${k}</b><br>` +
+      `rot: ${v.rotX},${v.rotY},${v.rotZ}<br>` +
+      `cam: ${v.camX},${v.camY},${v.camZ}<br>` +
+      `aim: yaw=${v.yaw} pitch=${v.pitch} fov=${v.fov}<br><br>`;
+  }).join('');
+}
+
+function copyAll(){
+  const keys=Object.keys(saved);
+  if(!keys.length){document.getElementById('status').textContent='Nothing saved yet!';return;}
+  const lines=keys.map(k=>`${k}: rot(${saved[k].rotX},${saved[k].rotY},${saved[k].rotZ}) cam(${saved[k].camX},${saved[k].camY},${saved[k].camZ}) yaw=${saved[k].yaw} pitch=${saved[k].pitch} fov=${saved[k].fov}`);
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>{document.getElementById('status').textContent='✓ Copied '+keys.length+' models';});
+}
+
+function updateReadout(){
+  const p=camera.position;
+  document.getElementById('output').innerHTML=
+    `<b>Cam:</b> ${p.x.toFixed(4)}, ${p.y.toFixed(4)}, ${p.z.toFixed(4)}<br>`+
+    `<b>Aim:</b> yaw=${readVal('yaw').toFixed(3)} pitch=${readVal('pitch').toFixed(3)} fov=${readVal('fov').toFixed(0)}<br>`+
+    `<b>Rot:</b> rx=${readVal('rx').toFixed(3)} ry=${readVal('ry').toFixed(3)} rz=${readVal('rz').toFixed(3)}`;
+}
+
+// ── GLB Loader ──
+THREE.GLTFLoader=class{
+  load(url,onLoad,_,onError){
+    document.getElementById('status').textContent='Loading '+url.split('/').pop()+'...';
+    fetch(url).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer();})
+    .then(buf=>{
+      const v=new DataView(buf);
+      if(v.getUint32(0,true)!==0x46546C67)throw new Error('Not a GLB file');
+      const jl=v.getUint32(12,true);
+      const json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,jl)));
+      const je=20+jl;
+      const bin=v.byteLength>je+8?buf.slice(je+8,je+8+v.getUint32(je,true)):new ArrayBuffer(0);
+      this._build(json,bin,onLoad);
+    }).catch(e=>{if(onError)onError(e);document.getElementById('status').textContent='❌ '+e.message;});
+  }
+  _build(json,bin,onLoad){
+    const bufs=[bin];
+    const bv=(json.bufferViews||[]).map(b=>new Uint8Array(bufs[b.buffer||0],b.byteOffset||0,b.byteLength));
+    const imgs=(json.images||[]).map(i=>{
+      if(i.bufferView==null)return null;
+      const blob=new Blob([bv[i.bufferView]],{type:i.mimeType||'image/png'});
+      const tex=new THREE.Texture();const im=new Image();
+      im.onload=()=>{tex.image=im;tex.needsUpdate=true;URL.revokeObjectURL(im.src);};
+      im.src=URL.createObjectURL(blob);return tex;
+    });
+    const mats=(json.materials||[]).map(m=>{
+      const mat=new THREE.MeshLambertMaterial();
+      const p=m.pbrMetallicRoughness;
+      if(p){if(p.baseColorFactor)mat.color.setRGB(...p.baseColorFactor.slice(0,3));
+        if(p.baseColorTexture!=null&&imgs[p.baseColorTexture.index])mat.map=imgs[p.baseColorTexture.index];}
+      return mat;
+    });
+    const ac=json.accessors||[];
+    const T={SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT4:16};
+    const CT={5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array};
+    const getA=i=>{const a=ac[i],b=(json.bufferViews||[])[a.bufferView];
+      return new(CT[a.componentType])(bufs[b.buffer||0],(b.byteOffset||0)+(a.byteOffset||0),a.count*T[a.type]);};
+    const g=new THREE.Group();
+    (json.meshes||[]).forEach(m=>m.primitives.forEach(p=>{
+      const geo=new THREE.BufferGeometry();
+      if(p.attributes.POSITION!=null)geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(getA(p.attributes.POSITION)),3));
+      if(p.attributes.NORMAL!=null)geo.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(getA(p.attributes.NORMAL)),3));
+      if(p.attributes.TEXCOORD_0!=null)geo.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(getA(p.attributes.TEXCOORD_0)),2));
+      if(p.indices!=null){const id=getA(p.indices);geo.setIndex(new THREE.BufferAttribute(id instanceof Uint32Array?id:new Uint32Array(id),1));}
+      if(!geo.attributes.normal)geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo,mats[p.material]||new THREE.MeshLambertMaterial({color:0x4a6040})));
+    }));
+    onLoad({scene:g});
+  }
+};
+
+const loader=new THREE.GLTFLoader();
+function loadSelected(){
+  const url=document.getElementById('modelPicker').value;
+  if(model){scene.remove(model);model=null;}
+  ['rx','ry','rz'].forEach(id=>setPair(id, 0));
+  loader.load(url,gltf=>{
+    model=gltf.scene;
+    const box=new THREE.Box3().setFromObject(model);
+    const sz=new THREE.Vector3();box.getSize(sz);
+    const maxDim=Math.max(sz.x,sz.y,sz.z);
+    if(maxDim>0)model.scale.setScalar(0.008/maxDim);
+    const box2=new THREE.Box3().setFromObject(model);
+    model.position.y-=box2.min.y;
+    scene.add(model);
+    document.getElementById('status').textContent=`✓ Loaded (orig size: ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)})`;
+  },undefined,e=>{document.getElementById('status').textContent='❌ '+e.message;});
+}
+
+// Auto-load first model
+loadSelected();
+applyOrbit();  // seeds Cam X/Y/Z from default orbit
+(function loop(){requestAnimationFrame(loop);renderer.render(scene,camera);})();
+</script>
+</body>
+</html>
