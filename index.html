@@ -5397,6 +5397,7 @@ function update() {
         damage:baseDmg, color:gun.shell,
         rocket:true, dead:false, trail:[], age:0, sourceGun:gun,
         indirect:isIndirect, totalDist:distToTarget, ammoType:gun.ammoType,
+        gvId: ++_gv._projectileIdCounter,
       });
       for (let b=0;b<12;b++) {
         const sp=(Math.random()-.5)*1.4;
@@ -5414,6 +5415,7 @@ function update() {
         rocket:false, dead:false, trail:[], sourceGun:gun,
         indirect:isIndirect, totalDist:distToTarget, originFx:gun.fx, originFy:gun.fy,
         ammoType:gun.ammoType,
+        gvId: ++_gv._projectileIdCounter,
       });
     }
   }
@@ -5739,6 +5741,11 @@ function update() {
     }
   }
   enemies     = enemies.filter(e=>!e.dead);
+  // Build 42: notify gunner view of dead projectiles so it can spawn 3D
+  // impact blasts at their final positions before we strip them from the sim.
+  if (_gv && _gv.active && typeof _gvOnProjectileDeath === 'function') {
+    for (const p of projectiles) if (p.dead && p.gvId) _gvOnProjectileDeath(p);
+  }
   projectiles = projectiles.filter(p=>!p.dead);
   cfShots     = cfShots.filter(p=>!p.dead);
 
@@ -9160,6 +9167,11 @@ let _gv = {
   baseGroundY: 0, gunWX: 0, gunWY: 0, gunWZ: 0,
   zooming: false, zoomT: 0, zoomFrom: null, zoomTo: null,
   glbCache: {},
+  // Build 42: friendly-unit visualization in gunner view
+  friendlyGunMeshes: new Map(),    // gunId -> Three.js Object3D
+  friendlyShellMeshes: new Map(),  // projectileId -> { mesh, lastFx, lastFy, peakY }
+  blastEffects: [],                // active 3D explosions: { mesh, life, maxLife }
+  _projectileIdCounter: 0,
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -9237,63 +9249,64 @@ const CAM_BEHIND = 0.004;  // 4m behind breech
 const CAM_UP     = 0.002;  // 2m above breech (eye level over barrel)
 const CAM_LOOK   = 10.0;   // lookAt target 10km down range
 
+// Third-person tactical camera (build 40). Replaces the old iron-sights per-gun
+// camera. Sits behind and above the gun, always looking in the aim direction.
+// Gun remains visible in-frame so barrel elevation, firing, and recoil are all
+// readable. Camera and gun rotate around a shared pivot point (the gun's
+// position on the terrain).
+//
+// Offset is in GUN-LOCAL space BEFORE yaw rotation:
+//   +x = right of gun
+//   +y = above gun
+//   +z = forward (away from the gun's rear)
+// For "behind the gun" we want -z (back) and +y (up). The camera then yaws
+// with the gun around its pivot.
+const TAC_CAM_BEHIND = 0.018;  // 18m behind the gun (world units = km)
+const TAC_CAM_UP     = 0.010;  // 10m above the gun
+const TAC_CAM_PITCH_FACTOR = 0.45;  // camera's pitch response is only 45% of aim pitch —
+                                    // means the BARREL (which moves 0.6× pitch) rises
+                                    // in-frame by (0.6 - 0.45) = 0.15× pitch worth. Visible.
+const TAC_CAM_FOV = 50;   // wide enough to see context, narrow enough to read detail
+
 function _setCameraOnGun() {
   if (!_gv.camera) return;
-  const T = _gv.gun ? _getGunTransform(_gv.gun.gunKey) : null;
   const y = _gv.yaw, p = _gv.pitch;
   const altY = _gv.altOffset || 0;
-  if (T && T.camera) {
-    // Per-gun camera: rotate local offset by BOTH yaw AND pitch so camera
-    // tracks the barrel through elevation. Without pitch, the gun body
-    // swings up into view when you aim up.
-    const c = T.camera;
-    // Start with camera offset in gun-local space: (cx, cy, cz)
-    const lx = c.x || 0, ly = c.y || 0, lz = c.z || 0;
-    // Rotate around X by -pitch (rotating the offset forward as barrel goes up):
-    //   y' = ly*cosP - lz*sinP;  z' = ly*sinP + lz*cosP;
-    // We negate pitch so "aim up" moves camera up with barrel, not through it.
-    const cosP = Math.cos(-p), sinP = Math.sin(-p);
-    const lyP = ly * cosP - lz * sinP;
-    const lzP = ly * sinP + lz * cosP;
-    // Rotate around world Y by yaw:
-    const cosY = Math.cos(y), sinY = Math.sin(y);
-    const px = _gv.gunWX + lx * cosY + lzP * sinY;
-    const py = _gv.gunWY + lyP + altY;
-    const pz = _gv.gunWZ - lx * sinY + lzP * cosY;
-    _gv.camera.position.set(px, py, pz);
-    // LookAt combines per-gun baseline aim with dynamic game yaw/pitch
-    const totalY = y + (c.yaw || 0);
-    const totalP = p + (c.pitch || 0);
-    _gv.camera.lookAt(
-      px + Math.sin(totalY) * Math.cos(totalP) * 10,
-      py + Math.sin(totalP) * 10,
-      pz + Math.cos(totalY) * Math.cos(totalP) * 10
-    );
-    _gv.camera.fov = (c.fov || 60) * (_gv.zoomedIn ? 0.5 : 1);
-    _gv.camera.updateProjectionMatrix();
-  } else {
-    // Legacy default iron-sights camera — also tracks pitch now
-    const cosP = Math.cos(-p), sinP = Math.sin(-p);
-    // Offset in local space: (0, CAM_UP, -CAM_BEHIND), then rotate by pitch, then yaw
-    const lx = 0, ly = CAM_UP, lz = -CAM_BEHIND;
-    const lyP = ly * cosP - lz * sinP;
-    const lzP = ly * sinP + lz * cosP;
-    const cosY = Math.cos(y), sinY = Math.sin(y);
-    const px = _gv.gunWX + lx * cosY + lzP * sinY;
-    const py = _gv.gunWY + lyP + altY;
-    const pz = _gv.gunWZ - lx * sinY + lzP * cosY;
-    _gv.camera.position.set(px, py, pz);
-    _gv.camera.lookAt(
-      _gv.gunWX + Math.sin(y) * Math.cos(p) * CAM_LOOK,
-      py + Math.sin(p) * CAM_LOOK,
-      _gv.gunWZ + Math.cos(y) * Math.cos(p) * CAM_LOOK
-    );
-    // Legacy branch: apply zoom from default FOV 60
-    _gv.camera.fov = 60 * (_gv.zoomedIn ? 0.5 : 1);
-    _gv.camera.updateProjectionMatrix();
-  }
-  // Gun mesh stays visible — per-gun camera is dialed in to not clip,
-  // and the SVG barrel overlay has been removed.
+  // Gun pivot point (world coords)
+  const gx = _gv.gunWX, gy = _gv.gunWY, gz = _gv.gunWZ;
+
+  // Camera offset — behind + above, rotated by yaw so the camera orbits around
+  // the gun as you traverse left/right.
+  // In gun-local (pre-yaw) space, camera sits at (0, UP, -BEHIND).
+  // After yaw, camera world offset = (-sinY * BEHIND, UP, -cosY * BEHIND).
+  const behind = TAC_CAM_BEHIND;
+  const up     = TAC_CAM_UP;
+
+  // Camera position: pivot + offset (yaw-rotated). We do NOT pitch the camera
+  // offset — it stays at a fixed height above the gun regardless of aim.
+  const sinY = Math.sin(y), cosY = Math.cos(y);
+  const cx = gx - sinY * behind;
+  const cy = gy + up + altY;
+  const cz = gz - cosY * behind;
+  _gv.camera.position.set(cx, cy, cz);
+
+  // Camera look target: a point far along the aim direction from the GUN's
+  // position. That way the camera points "through" the barrel area, keeping
+  // the gun visible in the lower-center of the frame while the aim is
+  // respected (crosshair stays near wherever the player is aiming).
+  // Camera pitches a fraction of the aim pitch so the barrel actually rises
+  // in the frame when the player aims up.
+  const camP = p * TAC_CAM_PITCH_FACTOR;
+  const LOOK_DIST = 1.0;  // 1 km ahead
+  const tx = gx + Math.sin(y) * Math.cos(camP) * LOOK_DIST;
+  const ty = gy + Math.sin(camP) * LOOK_DIST;
+  const tz = gz + Math.cos(y) * Math.cos(camP) * LOOK_DIST;
+  _gv.camera.lookAt(tx, ty, tz);
+
+  _gv.camera.fov = TAC_CAM_FOV * (_gv.zoomedIn ? 0.5 : 1);
+  _gv.camera.updateProjectionMatrix();
+
+  // Gun mesh stays visible — tactical view intentionally shows the gun.
   if (_gv.gunMesh) _gv.gunMesh.visible = true;
 }
 
@@ -9442,7 +9455,7 @@ function _applyGunYaw(mesh, baseAngle) {
 // trail without looking like it's pointing at the sky.
 const GV_PITCH_MIN = -0.175;  // -10° (accepted limit)
 const GV_PITCH_MAX =  0.785;  // +45° (accepted limit)
-const GV_PITCH_MESH_FACTOR = 0.6;  // gun mesh tilts 60% of aim pitch — enough to read, not enough to look comical
+const GV_PITCH_MESH_FACTOR = 1.0;  // gun mesh tilts at full aim pitch (build 40: camera now pitches less, so full barrel motion is readable)
 function _clampPitch(p) { return Math.max(GV_PITCH_MIN, Math.min(GV_PITCH_MAX, p)); }
 function _applyGunPitch(mesh, pitchRad) {
   if (!mesh) return;
@@ -9662,6 +9675,9 @@ function exitGunnerView() {
   if (_gv.renderer) { _gv.renderer.dispose(); _gv.renderer = null; }
   _gv.scene = null; _gv.camera = null; _gv.terrain = null;
   _gv.gunMesh = null; _gv.enemyMeshes = []; _gv.enemyArrows = []; _gv.dummies = [];
+  _gv.friendlyGunMeshes = new Map();
+  _gv.friendlyShellMeshes = new Map();
+  _gv.blastEffects = [];
   _gv.zoomedIn = false;
   _gvShells = []; _gvBlasts = []; _gvCanFire = true; _gvRecoil = 0;
 }
@@ -9824,17 +9840,37 @@ function _initGunnerRenderer() {
   const W = window.innerWidth, H = window.innerHeight;
   canvas.width = W; canvas.height = H;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0xa8b8c8, 0.006);
-  scene.background = new THREE.Color(0xb8c8d8);
+  // Build 41: dramatic sky + smoky horizon.
+  // Vertical gradient: slate-blue top → dusty haze → smoky brown horizon.
+  // Same color family as the fog so distant terrain dissolves seamlessly.
+  {
+    const skyCvs = document.createElement('canvas');
+    skyCvs.width = 2; skyCvs.height = 512;
+    const g = skyCvs.getContext('2d').createLinearGradient(0, 0, 0, 512);
+    g.addColorStop(0.00, '#2a3040');  // deep slate at zenith
+    g.addColorStop(0.35, '#4a4c52');  // cooler midband
+    g.addColorStop(0.65, '#6a5a4a');  // warm haze
+    g.addColorStop(0.90, '#554030');  // smoky brown
+    g.addColorStop(1.00, '#3a2818');  // dark burn at horizon
+    const cx = skyCvs.getContext('2d');
+    cx.fillStyle = g; cx.fillRect(0, 0, 2, 512);
+    const skyTex = new THREE.CanvasTexture(skyCvs);
+    skyTex.wrapS = skyTex.wrapT = THREE.ClampToEdgeWrapping;
+    scene.background = skyTex;
+  }
+  // Fog color picks up the smoky-horizon tone so distant terrain melts into
+  // the haze. Slightly denser than before for more atmosphere.
+  scene.fog = new THREE.FogExp2(0x6a5a4a, 0.009);
   _gv.scene = scene;
-  const camera = new THREE.PerspectiveCamera(60, W/H, 0.001, 2000);
+  const camera = new THREE.PerspectiveCamera(TAC_CAM_FOV, W/H, 0.001, 2000);
   _gv.camera = camera;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(W, H);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   _gv.renderer = renderer;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));  // reduced from 1.2 — was washing colors to white
-  const sun = new THREE.DirectionalLight(0xfff0d8, 0.9);  // bumped sun to compensate, adds shading
+  // Slightly dimmed ambient + warmer sun for dramatic feel
+  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+  const sun = new THREE.DirectionalLight(0xffd8a8, 1.0);  // warmer sun
   sun.position.set(0.6, 1, 0.4); scene.add(sun);
 
   const loader = new THREE.TextureLoader();
@@ -10001,14 +10037,92 @@ function _buildTerrain(hmTex, topoTex) {
   }
   geom.rotateX(-Math.PI/2);
   geom.computeVertexNormals();
-  const mat = new THREE.MeshLambertMaterial({
-    map: topoTex || null,
-    // White multiplier when texture present → unaltered texture colors.
-    // (Was 0xaaaaaa which dimmed the texture; that was fine for terrain_texture.jpg
-    //  but washes out the 2D game map.)
-    color: topoTex ? 0xffffff : 0x7a8060
-  });
-  if (topoTex) topoTex.wrapS = topoTex.wrapT = THREE.ClampToEdgeWrapping;
+
+  // ── TERRAIN MATERIAL (build 43) ───────────────────────────────────
+  // Two modes available:
+  //   'biome'     — elevation + slope-based procedural shader. Default.
+  //   'texture'   — drapes a surface texture (satellite imagery, topo map,
+  //                 etc.) using the topoTex that was loaded.
+  // Change TERRAIN_MODE to 'texture' if you later drop in a NAIP-based
+  // satellite mosaic as assets/terrain_surface.jpg and load it instead of
+  // the 2D game map.
+  const TERRAIN_MODE = 'biome';  // or 'texture'
+
+  let mat;
+  if (TERRAIN_MODE === 'texture' && topoTex) {
+    mat = new THREE.MeshLambertMaterial({
+      map: topoTex,
+      color: 0xffffff,
+    });
+    topoTex.wrapS = topoTex.wrapT = THREE.ClampToEdgeWrapping;
+  } else {
+    // Biome shader. Uses vertex world-Y + normal.y (slope) to blend three
+    // base colors. Lighting contribution is preserved via built-in Lambert
+    // diffuse in a ShaderMaterial extension.
+    const minY = (GV_ELEV_MIN / 1000) * GV_EXAGGERATION;
+    const maxY = (GV_ELEV_MAX / 1000) * GV_EXAGGERATION;
+    mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMinY:     { value: minY },
+        uMaxY:     { value: maxY },
+        uLowColor:  { value: new THREE.Color(0x3a5028) },  // forest green — valleys
+        uMidColor:  { value: new THREE.Color(0x6a4820) },  // earthy brown — slopes
+        uHighColor: { value: new THREE.Color(0x8a8278) },  // weathered gray — ridges
+        uRockColor: { value: new THREE.Color(0x5a554a) },  // darker rock — cliffs
+        uSunDir:    { value: new THREE.Vector3(0.6, 1.0, 0.4).normalize() },
+        uAmbient:   { value: 0.45 },
+        // Fog uniforms (manually wired since ShaderMaterial doesn't auto-integrate)
+        uFogColor:   { value: (_gv.scene.fog ? _gv.scene.fog.color : new THREE.Color(0x6a5a4a)) },
+        uFogDensity: { value: (_gv.scene.fog ? _gv.scene.fog.density : 0.009) },
+      },
+      vertexShader: `
+        varying float vWorldY;
+        varying vec3 vNormal;
+        varying float vFogDepth;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldY = worldPos.y;
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = viewMatrix * worldPos;
+          vFogDepth = -mvPos.z;
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform float uMinY;
+        uniform float uMaxY;
+        uniform vec3 uLowColor;
+        uniform vec3 uMidColor;
+        uniform vec3 uHighColor;
+        uniform vec3 uRockColor;
+        uniform vec3 uSunDir;
+        uniform float uAmbient;
+        uniform vec3 uFogColor;
+        uniform float uFogDensity;
+        varying float vWorldY;
+        varying vec3 vNormal;
+        varying float vFogDepth;
+        void main() {
+          float band = clamp((vWorldY - uMinY) / (uMaxY - uMinY), 0.0, 1.0);
+          vec3 base;
+          if (band < 0.5) {
+            base = mix(uLowColor, uMidColor, smoothstep(0.0, 0.5, band));
+          } else {
+            base = mix(uMidColor, uHighColor, smoothstep(0.5, 1.0, band));
+          }
+          float slope = 1.0 - clamp(vNormal.y, 0.0, 1.0);
+          float rockAmt = smoothstep(0.35, 0.7, slope);
+          base = mix(base, uRockColor, rockAmt);
+          float lambert = max(dot(vNormal, uSunDir), 0.0);
+          vec3 lit = base * (uAmbient + lambert * (1.0 - uAmbient));
+          // Exponential squared fog (matches FogExp2)
+          float fogAmt = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
+          vec3 final = mix(lit, uFogColor, clamp(fogAmt, 0.0, 1.0));
+          gl_FragColor = vec4(final, 1.0);
+        }
+      `,
+    });
+  }
   const mesh = new THREE.Mesh(geom, mat);
   _gv.scene.add(mesh);
   _gv.terrain = mesh;
@@ -10591,6 +10705,9 @@ function _gunnerLoop() {
   // Diagnostic: tally enemy render states. Helps diagnose "only N of M show up" issues.
   _updateEnemyDiagnostic();
 
+  // Build 42: sync friendly units + their shells + active blasts before render
+  _gvSyncFriendlies();
+
   if(_gv.renderer&&_gv.scene&&_gv.camera)_gv.renderer.render(_gv.scene,_gv.camera);
   _drawGunnerMinimap();
 }
@@ -10620,6 +10737,133 @@ function _updateEnemyDiagnostic() {
     `VISIBLE: ${visible}`;
   // preserve newlines in DOM
   el.style.whiteSpace = 'pre';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILD 42 — FRIENDLY UNITS VISIBLE IN GUNNER VIEW
+// Each frame, sync: (a) friendly gun meshes for every placed gun,
+// (b) shell meshes for every projectile in the sim,
+// (c) active 3D blast effects (lifetime-driven).
+// ═══════════════════════════════════════════════════════════════════
+
+// Called from the main 2D game tick right before filtering dead projectiles.
+// Spawns a 3D impact blast at the projectile's final 2D position.
+function _gvOnProjectileDeath(p) {
+  if (!_gv.scene) return;
+  const wx = (p.fx - 0.5) * GV_EW_KM;
+  const wz = (p.fy - 0.5) * GV_NS_KM;
+  const gy = _sampleTerrainY(p.fx, p.fy);
+  const pos = new THREE.Vector3(wx, gy, wz);
+  // Two-stage blast: bright core + slower smoke
+  _spawnGvBlast(pos.clone(), 0.015, 0xff9020, 30);
+  _spawnGvBlast(pos.clone(), 0.04, 0x503820, 90);
+  // Remove the shell tracker for this projectile
+  const entry = _gv.friendlyShellMeshes.get(p.gvId);
+  if (entry) {
+    if (entry.mesh && entry.mesh.parent) entry.mesh.parent.remove(entry.mesh);
+    if (entry.mesh && entry.mesh.geometry) entry.mesh.geometry.dispose();
+    if (entry.mesh && entry.mesh.material) entry.mesh.material.dispose();
+    _gv.friendlyShellMeshes.delete(p.gvId);
+  }
+}
+
+// Main per-frame sync. Called from _gunnerLoop.
+function _gvSyncFriendlies() {
+  if (!_gv.scene) return;
+  _gvSyncFriendlyGuns();
+  _gvSyncFriendlyShells();
+}
+
+// Match _gv.friendlyGunMeshes to the current placedGuns array.
+// Spawns low-poly procedural mesh for each placed gun (not the GLB — keeps
+// performance manageable when several guns are in view). The player's active
+// gun is NOT included here — that's _gv.gunMesh and has its own lifecycle.
+function _gvSyncFriendlyGuns() {
+  if (typeof placedGuns === 'undefined' || !placedGuns) return;
+  const active = _gv.gun;
+  const seen = new Set();
+  for (const g of placedGuns) {
+    if (g === active) continue;  // active gun handled by _placeGunMesh
+    // Use a stable ID. placedGuns[i].gunCounterId exists in some flows; fall back
+    // to the gun object itself as a WeakMap-style key using Map.
+    const id = g.gunCounterId || g;
+    seen.add(id);
+    let mesh = _gv.friendlyGunMeshes.get(id);
+    if (!mesh) {
+      // Spawn a procedural gun mesh — low cost, looks decent at distance
+      mesh = _buildGunMesh(g.gunKey);
+      mesh.rotation.order = 'YXZ';
+      _tintGunMesh(mesh);
+      _gv.scene.add(mesh);
+      _gv.friendlyGunMeshes.set(id, mesh);
+    }
+    // Update position/orientation each frame
+    const wx = (g.fx - 0.5) * GV_EW_KM;
+    const wz = (g.fy - 0.5) * GV_NS_KM;
+    const gy = _sampleTerrainY(g.fx, g.fy);
+    mesh.position.set(wx, gy, wz);
+    // g.angle is the gun's 2D aim angle — convert to 3D yaw
+    // 2D angle: 0 = +x (east), Math.PI/2 = +y (south on screen)
+    // 3D yaw: 0 = +z forward, rotates around Y
+    // Mapping: yaw = -angle (flip y because 2D+y is 3D+z but screen down is map north)
+    mesh.rotation.y = -g.angle + Math.PI * 0.5;
+  }
+  // Remove meshes for guns that no longer exist
+  for (const [id, mesh] of _gv.friendlyGunMeshes) {
+    if (!seen.has(id)) {
+      _gv.scene.remove(mesh);
+      _gv.friendlyGunMeshes.delete(id);
+    }
+  }
+}
+
+// Match shell meshes to current projectiles array.
+// Shells in the 2D sim have (fx, fy) but no Y; we synthesize an arc using
+// distance-traveled fraction along totalDist as phase, peaking mid-flight.
+function _gvSyncFriendlyShells() {
+  if (typeof projectiles === 'undefined' || !projectiles) return;
+  const seen = new Set();
+  for (const p of projectiles) {
+    if (!p.gvId || p.dead) continue;
+    seen.add(p.gvId);
+    let entry = _gv.friendlyShellMeshes.get(p.gvId);
+    if (!entry) {
+      // Small glowing sphere for shell
+      const geo = new THREE.SphereGeometry(0.0008, 8, 6);
+      const mat = new THREE.MeshBasicMaterial({color: 0xffcc60});
+      const mesh = new THREE.Mesh(geo, mat);
+      _gv.scene.add(mesh);
+      entry = { mesh, lastFx: p.fx, lastFy: p.fy };
+      _gv.friendlyShellMeshes.set(p.gvId, entry);
+    }
+    // 3D position: XZ from fractional map coords, Y from synthesized arc.
+    const wx = (p.fx - 0.5) * GV_EW_KM;
+    const wz = (p.fy - 0.5) * GV_NS_KM;
+    const groundY = _sampleTerrainY(p.fx, p.fy);
+    // Flight-phase arc. Distance traveled / total distance = phase in [0, 1].
+    let arcY = 0;
+    if (p.originFx !== undefined && p.totalDist && p.totalDist > 0) {
+      const traveled = Math.hypot(
+        (p.fx - p.originFx) * mapNatW,
+        (p.fy - p.originFy) * mapNatH
+      );
+      const phase = Math.max(0, Math.min(1, traveled / p.totalDist));
+      // sin(phase*PI) gives a symmetric arc peaking at phase=0.5
+      const peakHeight = p.indirect ? 0.030 : 0.008;  // 30m indirect lob, 8m direct
+      arcY = Math.sin(phase * Math.PI) * peakHeight;
+    }
+    entry.mesh.position.set(wx, groundY + arcY + 0.002, wz);
+    entry.lastFx = p.fx; entry.lastFy = p.fy;
+  }
+  // Any shell in the map that's no longer in the sim (should be caught by
+  // _gvOnProjectileDeath but belt-and-suspenders)
+  for (const [id, entry] of _gv.friendlyShellMeshes) {
+    if (!seen.has(id)) {
+      _gv.scene.remove(entry.mesh);
+      entry.mesh.geometry.dispose(); entry.mesh.material.dispose();
+      _gv.friendlyShellMeshes.delete(id);
+    }
+  }
 }
 
 // ── MINI-MAP ──
